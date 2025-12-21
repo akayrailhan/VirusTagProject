@@ -4,21 +4,43 @@ using TMPro;
 using System.Collections.Generic;
 using Unity.Services.Lobbies.Models;
 
+using Unity.Netcode;              // EKLE
+using UnityEngine.SceneManagement; // EKLE
+
 public class LobbyUI : MonoBehaviour
 {
     [Header("Main Panel")]
     public Button createLobbyButton;
     public Button refreshButton;
+    public Button startGameButton;
     public TMP_InputField lobbyNameInput;
 
     [Header("List Panel")]
-    public Transform contentParent; // Liste elemanlarının dizileceği yer
-    public GameObject lobbyItemPrefab; // Listedeki tek satırın tasarımı (Prefab)
+    public Transform contentParent;
+    public GameObject lobbyItemPrefab;
 
     private void Start()
     {
         createLobbyButton.onClick.AddListener(OnCreateClicked);
         refreshButton.onClick.AddListener(RefreshLobbyList);
+        startGameButton.onClick.AddListener(OnStartGameClicked);
+
+        // Başlangıçta güvenli olsun
+        startGameButton.interactable = false;
+    }
+
+    private void Update()
+    {
+        // Start butonu sadece HOST/SERVER'da aktif olsun
+        if (NetworkManager.Singleton == null)
+        {
+            startGameButton.interactable = false;
+            return;
+        }
+
+        startGameButton.interactable = NetworkManager.Singleton.IsServer;
+        // İsterseniz tamamen gizlemek:
+        // startGameButton.gameObject.SetActive(NetworkManager.Singleton.IsServer);
     }
 
     private async void OnCreateClicked()
@@ -28,15 +50,14 @@ public class LobbyUI : MonoBehaviour
 
         createLobbyButton.interactable = false;
 
-        // 1. Önce Relay (Sunucu) Aç ve Kod Al
-        string joinCode = await RelayManager.CreateRelay(4); // Max 4 oyuncu
+        // 1) Relay aç + host başlat
+        string joinCode = await RelayManager.CreateRelay(4);
 
-        if (joinCode != null)
+        if (!string.IsNullOrEmpty(joinCode))
         {
-            // 2. Sonra Lobi Aç ve Kodu İçine Göm
+            // 2) Lobby oluştur + join code göm
             await LobbyManager.CreateLobby(lobbyName, 4, joinCode);
 
-            // 3. Oyun Sahnesine Geç (NetworkManager otomatik geçer ama biz şimdilik loglayalım)
             Debug.Log("Lobby Created & Host Started! Waiting for players...");
         }
         else
@@ -47,22 +68,31 @@ public class LobbyUI : MonoBehaviour
 
     private async void RefreshLobbyList()
     {
-        // Eski listeyi temizle
-        foreach (Transform child in contentParent) Destroy(child.gameObject);
+        foreach (Transform child in contentParent)
+            Destroy(child.gameObject);
 
-        // Yeni listeyi çek
         List<Lobby> lobbies = await LobbyManager.GetLobbies();
 
-        // Ekrana bas
         foreach (Lobby lobby in lobbies)
         {
             GameObject item = Instantiate(lobbyItemPrefab, contentParent);
-            // LobbyItem bileşenini bul ve veriyi doldur (Bir sonraki adımda yazacağız)
             LobbyItemUI itemScript = item.GetComponent<LobbyItemUI>();
             if (itemScript != null)
-            {
                 itemScript.Setup(lobby);
-            }
         }
+    }
+
+    private void OnStartGameClicked()
+    {
+        if (NetworkManager.Singleton == null) return;
+
+        if (!NetworkManager.Singleton.IsServer)
+        {
+            Debug.Log("Only host can start the game.");
+            return;
+        }
+
+        // ÖNEMLİ: NetworkManager > NetworkConfig > Enable Scene Management açık olmalı
+        NetworkManager.Singleton.SceneManager.LoadScene("GameScene", LoadSceneMode.Single);
     }
 }
