@@ -27,8 +27,8 @@ public static class RelayManager
             UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
             transport.SetRelayServerData(relayServerData);
 
-            // 4. Host Başlat
-            NetworkManager.Singleton.StartHost();
+            // NOT: Host'u hemen başlatmıyoruz. Host, Lobby sahibinin "Start Game" düğmesine
+            // basmasından sonra başlatılacak. Burada sadece transport verisini ayarlıyoruz.
             return joinCode;
         }
         catch (RelayServiceException e)
@@ -36,6 +36,18 @@ public static class RelayManager
             Debug.LogError($"[Relay] Create Failed: {e.Message}");
             return null;
         }
+    }
+
+    // Host'u gerçekten başlatmak için çağrılır (Start Game butonunda)
+    public static void StartHost()
+    {
+        if (NetworkManager.Singleton == null)
+        {
+            Debug.LogError("[Relay] Cannot start host: NetworkManager.Singleton is null");
+            return;
+        }
+
+        NetworkManager.Singleton.StartHost();
     }
 
     // Client Olmak İçin (Odaya Katıl)

@@ -29,11 +29,19 @@ public class LobbyItemUI : MonoBehaviour
 
         if (joinedLobby != null)
         {
+            // Update main UI with joined lobby info if available
+            if (LobbyUI.Instance != null)
+            {
+                LobbyUI.Instance.ShowLobbyDetails(joinedLobby);
+            }
+
             // 2. Lobi Verisinden "JoinCode"u Çek
             string relayCode = joinedLobby.Data["JoinCode"].Value;
 
-            // 3. Relay ile Oyuna Bağlan
-            await RelayManager.JoinRelay(relayCode);
+            // 3. Relay ile hemen bağlanma: Host oyunu başlatana kadar bekle.
+            //    Bir waiter başlatıyoruz; host lobide "GameStarted" işaretini koyduğunda
+            //    waiter RelayManager.JoinRelay çağıracak.
+            LobbyJoinWaiter.StartWaiting(joinedLobby.Id, relayCode);
         }
         else
         {

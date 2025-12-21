@@ -8,9 +8,23 @@ using UnityEngine.SceneManagement;
 
 public class LobbyUI : MonoBehaviour
 {
+    public static LobbyUI Instance;
+
+    private void Awake()
+    {
+        Instance = this;
+        // Başlangıçta oyuncu herhangi bir lobide değilse alanları gizle
+        ClearLobbyDetails();
+    }
     [Header("Main Panel")]
     public Button createLobbyButton;
     public Button refreshButton;
+
+    public Image lobbyDetailsPanel;
+
+    public TextMeshProUGUI lobbyName;
+    public TextMeshProUGUI playerCount;
+    public Button startGameButton;
     public TMP_InputField lobbyNameInput;
 
     [Header("List Panel")]
@@ -21,6 +35,7 @@ public class LobbyUI : MonoBehaviour
     {
         createLobbyButton.onClick.AddListener(OnCreateClicked);
         refreshButton.onClick.AddListener(RefreshLobbyList);
+        startGameButton.onClick.AddListener(OnStartGameClicked);
     }
 
     private async void OnCreateClicked()
@@ -36,12 +51,18 @@ public class LobbyUI : MonoBehaviour
         if (joinCode != null)
         {
             // 2. Sonra Lobi Aç ve Kodu İçine Göm
-            await LobbyManager.CreateLobby(lobbyName, 4, joinCode);
+            var createdLobby = await LobbyManager.CreateLobby(lobbyName, 4, joinCode);
+
+            // Show created lobby details in main panel
+            if (createdLobby != null)
+            {
+                ShowLobbyDetails(createdLobby);
+            }
 
             // 3. Oyun Sahnesine Geç (KRİTİK ADIM)
             // NetworkManager.SceneManager kullanarak sahne yüklenir.
             // Bu sayede bağlı olan ve sonradan gelen tüm Client'lar da otomatik olarak bu sahneye geçer.
-            NetworkManager.Singleton.SceneManager.LoadScene("Game", LoadSceneMode.Single);
+            //NetworkManager.Singleton.SceneManager.LoadScene("Game", LoadSceneMode.Single);
 
             Debug.Log("Lobby Created & Host Started! Loading Game Scene...");
         }
@@ -49,6 +70,68 @@ public class LobbyUI : MonoBehaviour
         {
             createLobbyButton.interactable = true;
         }
+    }
+
+    public void ShowLobbyDetails(Unity.Services.Lobbies.Models.Lobby lobby)
+    {
+        if (lobbyName != null)
+        {
+            lobbyName.text = lobby.Name;
+            lobbyName.gameObject.SetActive(true);
+            lobbyDetailsPanel.gameObject.SetActive(true);
+        }
+
+        if (playerCount != null)
+        {
+            playerCount.text = $"{lobby.Players.Count}/{lobby.MaxPlayers}";
+            playerCount.gameObject.SetActive(true);
+        }
+
+        _isInLobby = true;
+    }
+
+    // Oyuncu herhangi bir lobide değilse çağrılır
+    public void ClearLobbyDetails()
+    {
+        _isInLobby = false;
+        if (lobbyName != null)
+        {
+            lobbyName.text = string.Empty;
+            lobbyName.gameObject.SetActive(false);
+            lobbyDetailsPanel.gameObject.SetActive(false);
+        }
+
+        if (playerCount != null)
+        {
+            playerCount.text = string.Empty;
+            playerCount.gameObject.SetActive(false);
+        }
+    }
+
+    private bool _isInLobby = false;
+
+    private void OnStartGameClicked()
+    {
+        if (NetworkManager.Singleton == null) return;
+
+        // Only the local lobby owner can start the game (we track ownership in LobbyManager)
+        if (!LobbyManager.IsHostLocal)
+        {
+            Debug.Log("Only host can start the game.");
+            return;
+        }
+
+        // 1) Host'u başlat (Relay transport zaten hazırlanmıştı)
+        RelayManager.StartHost();
+
+        // 2) Lobide GameStarted bayrağını koy, böylece client'lar relay'e bağlanmaya başlar
+        if (!string.IsNullOrEmpty(LobbyManager.CurrentLobbyId))
+        {
+            _ = LobbyManager.SetGameStarted(LobbyManager.CurrentLobbyId);
+        }
+
+        // 3) Sahneyi yükle (sunucu sahneyi yüklerse client'lar da otomatik geçer)
+        NetworkManager.Singleton.SceneManager.LoadScene("Game", LoadSceneMode.Single);
     }
 
     private async void RefreshLobbyList()

@@ -7,6 +7,12 @@ using UnityEngine;
 // Quest 2 & 3: Lobi oluşturma, listeleme ve katılma işlemlerini yönetir
 public static class LobbyManager
 {
+    // Eğer host bir lobi oluşturduysa, ID'yi burada saklıyoruz
+    public static string CurrentLobbyId { get; private set; }
+
+    // Bu istemci yerel olarak lobi sahibi mi?
+    public static bool IsHostLocal { get; private set; } = false;
+
     // Lobi Oluşturma (Host Beacon Protocol)
     public static async Task<Lobby> CreateLobby(string lobbyName, int maxPlayers, string relayJoinCode)
     {
@@ -30,6 +36,10 @@ public static class LobbyManager
 
             // Heartbeat başlat (Lobi ölmesin diye)
             LobbyHeartbeatHandler.SetLobbyId(lobby.Id);
+
+            // Kaydet: host bu lobby'nin sahibi
+            CurrentLobbyId = lobby.Id;
+            IsHostLocal = true;
 
             return lobby;
         }
@@ -91,6 +101,41 @@ public static class LobbyManager
         {
             Debug.LogError($"[Lobby] Join failed: {e.Message}");
             return null;
+        }
+    }
+
+    // Get lobby by id (useful for clients polling state)
+    public static async Task<Lobby> GetLobbyById(string lobbyId)
+    {
+        try
+        {
+            return await LobbyService.Instance.GetLobbyAsync(lobbyId);
+        }
+        catch (LobbyServiceException e)
+        {
+            Debug.LogError($"[Lobby] GetLobby failed: {e.Message}");
+            return null;
+        }
+    }
+
+    // Host, oyunu başlattığında lobinin verisini güncelle (clients buna bakacak)
+    public static async Task<bool> SetGameStarted(string lobbyId)
+    {
+        try
+        {
+            var data = new Dictionary<string, DataObject>
+            {
+                { "GameStarted", new DataObject(DataObject.VisibilityOptions.Member, "1") }
+            };
+
+            await LobbyService.Instance.UpdateLobbyAsync(lobbyId, new UpdateLobbyOptions { Data = data });
+            Debug.Log("[Lobby] Marked GameStarted on lobby.");
+            return true;
+        }
+        catch (LobbyServiceException e)
+        {
+            Debug.LogError($"[Lobby] SetGameStarted failed: {e.Message}");
+            return false;
         }
     }
 }
