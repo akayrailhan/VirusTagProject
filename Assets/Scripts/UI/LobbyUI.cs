@@ -3,6 +3,8 @@ using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
 using Unity.Services.Lobbies.Models;
+using Unity.Netcode;
+using UnityEngine.SceneManagement;
 
 public class LobbyUI : MonoBehaviour
 {
@@ -36,8 +38,12 @@ public class LobbyUI : MonoBehaviour
             // 2. Sonra Lobi Aç ve Kodu İçine Göm
             await LobbyManager.CreateLobby(lobbyName, 4, joinCode);
 
-            // 3. Oyun Sahnesine Geç (NetworkManager otomatik geçer ama biz şimdilik loglayalım)
-            Debug.Log("Lobby Created & Host Started! Waiting for players...");
+            // 3. Oyun Sahnesine Geç (KRİTİK ADIM)
+            // NetworkManager.SceneManager kullanarak sahne yüklenir.
+            // Bu sayede bağlı olan ve sonradan gelen tüm Client'lar da otomatik olarak bu sahneye geçer.
+            NetworkManager.Singleton.SceneManager.LoadScene("Game", LoadSceneMode.Single);
+
+            Debug.Log("Lobby Created & Host Started! Loading Game Scene...");
         }
         else
         {
@@ -57,7 +63,7 @@ public class LobbyUI : MonoBehaviour
         foreach (Lobby lobby in lobbies)
         {
             GameObject item = Instantiate(lobbyItemPrefab, contentParent);
-            // LobbyItem bileşenini bul ve veriyi doldur (Bir sonraki adımda yazacağız)
+            // LobbyItem bileşenini bul ve veriyi doldur
             LobbyItemUI itemScript = item.GetComponent<LobbyItemUI>();
             if (itemScript != null)
             {
