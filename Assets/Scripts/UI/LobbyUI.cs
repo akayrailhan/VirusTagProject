@@ -85,6 +85,11 @@ public class LobbyUI : MonoBehaviour
             if (createdLobby != null)
             {
                 ShowLobbyDetails(createdLobby);
+
+                // Host'u hemen başlat (Lobby sahnesindeyken)
+                // Böylece client'lar lobiye katılır katılmaz Relay'e bağlanıp
+                // NetworkManager üzerinden host'a bağlanabilirler.
+                RelayManager.StartHost();
             }
 
             // 3. Oyun Sahnesine Geç (KRİTİK ADIM)
@@ -184,13 +189,12 @@ public class LobbyUI : MonoBehaviour
             return;
         }
 
-        // 1) Host'u başlat (Relay transport zaten hazırlanmıştı)
-        RelayManager.StartHost();
-
-        // 2) Lobide GameStarted bayrağını koy, böylece client'lar relay'e bağlanmaya başlar
+        // Host zaten Lobby oluştururken başlatıldı.
+        // Sadece GameStarted bayrağını güncelle (isteğe bağlı) ve sahneyi yükle.
         _ = await LobbyManager.SetGameStarted(LobbyManager.CurrentLobbyId);
 
-        // 3) Sahneyi yükle (sunucu sahneyi yüklerse client'lar da otomatik geçer)
+        // Networked scene load: host Game sahnesini yüklediğinde, bağlı tüm client'lar
+        // otomatik olarak aynı sahneye geçer.
         NetworkManager.Singleton.SceneManager.LoadScene("Game", LoadSceneMode.Single);
     }
 
