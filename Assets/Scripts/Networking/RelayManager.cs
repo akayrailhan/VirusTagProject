@@ -29,9 +29,7 @@ public static class RelayManager
 
     public static void StartHost()
     {
-        if (NetworkManager.Singleton == null) return;
-        NetworkManager.Singleton.StartHost();
-        Debug.Log("[Relay] Host started on NetworkManager.");
+        if (NetworkManager.Singleton != null) NetworkManager.Singleton.StartHost();
     }
 
     public static async Task<bool> JoinRelay(string joinCode)
@@ -52,12 +50,11 @@ public static class RelayManager
             {
                 return NetworkManager.Singleton.StartClient();
             }
-
             return true;
         }
         catch (RelayServiceException e)
         {
-            Debug.LogWarning($"[Relay] Join Attempt Failed (Code might not be active yet): {e.Message}");
+            Debug.LogWarning($"[Relay] Join Attempt Failed (Kod henüz aktif olmayabilir): {e.Message}");
             return false;
         }
     }

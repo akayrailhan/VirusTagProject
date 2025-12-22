@@ -3,19 +3,15 @@ using System.Collections;
 using Unity.Services.Lobbies;
 using Unity.Services.Lobbies.Models;
 using Unity.Netcode;
-using System.Threading.Tasks;
 
 public class LobbyJoinWaiter : MonoBehaviour
 {
     private string _lobbyId;
     private string _joinCode;
-    private bool _isProcessing = false;
 
     public static void StartWaiting(string lobbyId, string joinCode)
     {
-        // Varsa eski waiter'ı temizle
-        var oldWaiter = GameObject.Find("LobbyJoinWaiter");
-        if (oldWaiter != null) Destroy(oldWaiter);
+        if (GameObject.Find("LobbyJoinWaiter")) return;
 
         GameObject go = new GameObject("LobbyJoinWaiter");
         DontDestroyOnLoad(go);
@@ -27,74 +23,51 @@ public class LobbyJoinWaiter : MonoBehaviour
 
     private IEnumerator PollLobbyAndJoin()
     {
-        Debug.Log("[LobbyJoinWaiter] Sorgulama başladı...");
-        
         while (true)
         {
-            if (_isProcessing) { yield return new WaitForSeconds(1f); continue; }
+            var task = LobbyService.Instance.GetLobbyAsync(_lobbyId);
+            yield return new WaitUntil(() => task.IsCompleted);
 
-            Task<Lobby> task = null;
-            try {
-                task = LobbyService.Instance.GetLobbyAsync(_lobbyId);
-            } catch (System.Exception e) {
-                Debug.LogWarning($"[LobbyJoinWaiter] Lobi çekilemedi: {e.Message}");
-            }
-
-            if (task != null)
+            if (!task.IsFaulted && task.Result != null)
             {
-                while (!task.IsCompleted) yield return null;
-
-                if (task.IsFaulted)
+                Lobby lobby = task.Result;
+                // Bayrak "1" olduğunda bağlantıyı başlat
+                if (lobby.Data?.ContainsKey("GameStarted") == true && lobby.Data["GameStarted"].Value == "1")
                 {
-                    Debug.LogWarning("[LobbyJoinWaiter] Lobi verisi alınırken hata oluştu, tekrar deneniyor...");
-                }
-                else
-                {
-                    Lobby lobby = task.Result;
-                    // GameStarted kontrolü
-                    if (lobby != null && lobby.Data != null && lobby.Data.ContainsKey("GameStarted") && lobby.Data["GameStarted"].Value == "1")
-                    {
-                        _isProcessing = true;
-                        yield return StartCoroutine(JoinRelayWithRetry());
-                        yield break; // Bağlantı denemesi bittiğinde coroutine'i sonlandır
-                    }
+                    yield return StartCoroutine(JoinRelayWithRetry());
+                    yield break;
                 }
             }
-
-            yield return new WaitForSeconds(2f); // Her 2 saniyede bir kontrol et
+            yield return new WaitForSeconds(2.5f);
         }
     }
 
     private IEnumerator JoinRelayWithRetry()
     {
         int attempts = 0;
-        const int maxAttempts = 8;
+        const int maxAttempts = 10; // Daha fazla deneme hakkı
         bool joined = false;
 
         while (attempts < maxAttempts && !joined)
         {
             attempts++;
-            float waitTime = 1.5f * attempts;
-            Debug.Log($"[LobbyJoinWaiter] Relay Denemesi {attempts}/{maxAttempts}...");
-
             var joinTask = RelayManager.JoinRelay(_joinCode);
-            while (!joinTask.IsCompleted) yield return null;
+            yield return new WaitUntil(() => joinTask.IsCompleted);
 
             if (joinTask.Result)
             {
-                Debug.Log("[LobbyJoinWaiter] BAŞARILI! Relay'e bağlanıldı.");
+                Debug.Log("[Waiter] Relay'e BAŞARIYLA BAĞLANILDI.");
                 joined = true;
             }
             else
             {
-                Debug.LogWarning($"[LobbyJoinWaiter] Deneme {attempts} başarısız. {waitTime}s sonra tekrar...");
-                yield return new WaitForSeconds(waitTime);
+                float wait = 2.0f * attempts; // Gecikmeyi biraz daha artırdık
+                Debug.LogWarning($"[Waiter] Deneme {attempts} başarısız. {wait}s bekleniyor...");
+                yield return new WaitForSeconds(wait);
             }
         }
-
-        if (!joined) Debug.LogError("[LobbyJoinWaiter] Oyuna girilemedi, tüm denemeler başarısız!");
         
-        // Görev bitti, objeyi imha et
+        if (!joined) Debug.LogError("[Waiter] Oyuna girilemedi!");
         Destroy(gameObject);
     }
 }
