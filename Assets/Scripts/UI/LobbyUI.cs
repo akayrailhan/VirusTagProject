@@ -28,7 +28,7 @@ public class LobbyUI : MonoBehaviour
 
     [Header("List Panel")]
     public Transform contentParent; // Liste elemanlarının dizileceği yer
-    public Transform playerList; 
+    public Transform playerList;
     public GameObject lobbyItemPrefab; // Listedeki tek satırın tasarımı (Prefab)
     public GameObject playerListItem;
     private void Start()
@@ -126,6 +126,10 @@ public class LobbyUI : MonoBehaviour
         {
             UpdatePlayerCacheFromLobby(lobby);
         }
+
+        StopAllCoroutines(); // Önce varsa eskiyi durdur
+        StartCoroutine(PollLobbyUpdates());
+
     }
 
     // Oyuncu herhangi bir lobide değilse çağrılır
@@ -146,6 +150,7 @@ public class LobbyUI : MonoBehaviour
         }
 
         // polling disabled: nothing to stop
+        StopAllCoroutines();
     }
 
     private bool _isInLobby = false;
@@ -371,7 +376,7 @@ public class LobbyUI : MonoBehaviour
             }
 
             float timer = 0f;
-            while (timer < 5f)
+            while (timer < 3f)
             {
                 timer += Time.deltaTime;
                 yield return null;

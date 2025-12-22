@@ -3,6 +3,8 @@ using System.Collections;
 using Unity.Services.Lobbies;
 using Unity.Services.Lobbies.Models;
 using System.Threading.Tasks;
+using Unity.Netcode;
+using UnityEngine.SceneManagement;
 
 // Polls lobby until host marks GameStarted, then calls RelayManager.JoinRelay
 public class LobbyJoinWaiter : MonoBehaviour
@@ -81,6 +83,45 @@ public class LobbyJoinWaiter : MonoBehaviour
                     else
                     {
                         Debug.Log("[LobbyJoinWaiter] Successfully started client via Relay.");
+
+                        // If NetworkManager is available, listen for the OnClientConnectedCallback
+                        bool callbackFired = false;
+                        System.Action<ulong> onConnected = null;
+                        if (NetworkManager.Singleton != null)
+                        {
+                            onConnected = (clientId) =>
+                            {
+                                // When this client receives its own connection event, load the scene
+                                if (clientId == NetworkManager.Singleton.LocalClientId)
+                                {
+                                    callbackFired = true;
+                                    NetworkManager.Singleton.OnClientConnectedCallback -= onConnected;
+                                    Debug.Log("[LobbyJoinWaiter] OnClientConnectedCallback fired for local client -> loading Game scene.");
+                                    SceneManager.LoadScene("Game");
+                                }
+                            };
+
+                            NetworkManager.Singleton.OnClientConnectedCallback += onConnected;
+                        }
+
+                        // Wait up to 10s for the callback to fire (connection)
+                        float connTimer = 0f;
+                        while (!callbackFired && connTimer < 10f)
+                        {
+                            connTimer += Time.deltaTime;
+                            yield return null;
+                        }
+
+                        if (!callbackFired)
+                        {
+                            Debug.LogWarning("[LobbyJoinWaiter] Connection callback not observed within timeout. Attempting to load Game scene anyway.");
+                            // cleanup subscription if still present
+                            if (NetworkManager.Singleton != null && onConnected != null)
+                                NetworkManager.Singleton.OnClientConnectedCallback -= onConnected;
+
+                            SceneManager.LoadScene("Game");
+                        }
+
                         joined = true;
                         break;
                     }
@@ -107,7 +148,7 @@ public class LobbyJoinWaiter : MonoBehaviour
 
             // wait a second then poll again
             float timer = 0f;
-            while (timer < 1f)
+            while (timer < 3f)
             {
                 timer += Time.deltaTime;
                 yield return null;

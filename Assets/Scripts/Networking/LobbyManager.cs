@@ -277,7 +277,7 @@ public static class LobbyManager
 
         return true;
     }
-    
+
     // Verilen lobbyId için lobiyi getirir ve içindeki oyuncu isimlerini döndürür
     public static async Task<List<string>> GetPlayerNamesById(string lobbyId)
     {
@@ -338,7 +338,7 @@ public static class LobbyManager
 
         return result;
     }
-    
+
 }
 
 // Lobiyi canlı tutmak için Heartbeat (Kalp Atışı) sistemi
