@@ -2,157 +2,99 @@ using UnityEngine;
 using System.Collections;
 using Unity.Services.Lobbies;
 using Unity.Services.Lobbies.Models;
-using System.Threading.Tasks;
 using Unity.Netcode;
-using UnityEngine.SceneManagement;
+using System.Threading.Tasks;
 
-// Polls lobby until host marks GameStarted, then calls RelayManager.JoinRelay
 public class LobbyJoinWaiter : MonoBehaviour
 {
+    private string _lobbyId;
+    private string _joinCode;
+    private bool _isProcessing = false;
+
     public static void StartWaiting(string lobbyId, string joinCode)
     {
+        // Varsa eski waiter'ı temizle
+        var oldWaiter = GameObject.Find("LobbyJoinWaiter");
+        if (oldWaiter != null) Destroy(oldWaiter);
+
         GameObject go = new GameObject("LobbyJoinWaiter");
         DontDestroyOnLoad(go);
         var waiter = go.AddComponent<LobbyJoinWaiter>();
-        waiter.StartCoroutine(waiter.PollLobbyAndJoin(lobbyId, joinCode));
+        waiter._lobbyId = lobbyId;
+        waiter._joinCode = joinCode;
+        waiter.StartCoroutine(waiter.PollLobbyAndJoin());
     }
 
-    private IEnumerator PollLobbyAndJoin(string lobbyId, string joinCode)
+    private IEnumerator PollLobbyAndJoin()
     {
-        // Poll every 1 second
+        Debug.Log("[LobbyJoinWaiter] Sorgulama başladı...");
+        
         while (true)
         {
-            var task = Unity.Services.Lobbies.LobbyService.Instance.GetLobbyAsync(lobbyId);
-            while (!task.IsCompleted)
-                yield return null;
+            if (_isProcessing) { yield return new WaitForSeconds(1f); continue; }
 
-            if (task.IsFaulted)
-            {
-                var ex = task.Exception != null ? task.Exception.GetBaseException() : null;
-                string em = ex != null ? ex.Message : "(no exception)";
-
-                // If we were rate-limited, back off and continue polling instead of aborting
-                if (em.Contains("Too Many Requests") || em.Contains("429"))
-                {
-                    Debug.LogWarning("[LobbyJoinWaiter] Rate limited while fetching lobby; backing off 5s and retrying.");
-                    float backoff = 5f;
-                    float t = 0f;
-                    while (t < backoff)
-                    {
-                        t += Time.deltaTime;
-                        yield return null;
-                    }
-                    continue; // retry
-                }
-
-                Debug.LogWarning($"[LobbyJoinWaiter] Failed to get lobby or lobby closed: {em}");
-                Destroy(gameObject);
-                yield break;
+            Task<Lobby> task = null;
+            try {
+                task = LobbyService.Instance.GetLobbyAsync(_lobbyId);
+            } catch (System.Exception e) {
+                Debug.LogWarning($"[LobbyJoinWaiter] Lobi çekilemedi: {e.Message}");
             }
 
-            Lobby lobby = task.Result;
-            if (lobby == null)
+            if (task != null)
             {
-                Debug.LogWarning("[LobbyJoinWaiter] Lobby was not found (null). Destroying waiter.");
-                Destroy(gameObject);
-                yield break;
-            }
-            if (lobby.Data != null && lobby.Data.ContainsKey("GameStarted") && lobby.Data["GameStarted"].Value == "1")
-            {
-                // Host started game — now join relay and exit
-                Debug.Log("[LobbyJoinWaiter] GameStarted flag detected, joining relay...");
+                while (!task.IsCompleted) yield return null;
 
-                // Try joining relay with a few retries/backoff in case of transient failures
-                int attempts = 0;
-                const int maxAttempts = 3;
-                bool joined = false;
-                while (attempts < maxAttempts && !joined)
+                if (task.IsFaulted)
                 {
-                    attempts++;
-                    var joinTask = RelayManager.JoinRelay(joinCode);
-                    while (!joinTask.IsCompleted) yield return null;
-
-                    if (joinTask.IsFaulted)
+                    Debug.LogWarning("[LobbyJoinWaiter] Lobi verisi alınırken hata oluştu, tekrar deneniyor...");
+                }
+                else
+                {
+                    Lobby lobby = task.Result;
+                    // GameStarted kontrolü
+                    if (lobby != null && lobby.Data != null && lobby.Data.ContainsKey("GameStarted") && lobby.Data["GameStarted"].Value == "1")
                     {
-                        Debug.LogError($"[LobbyJoinWaiter] JoinRelay task faulted on attempt {attempts}.");
-                    }
-                    else if (!joinTask.Result)
-                    {
-                        Debug.LogWarning($"[LobbyJoinWaiter] JoinRelay reported failure on attempt {attempts}.");
-                    }
-                    else
-                    {
-                        Debug.Log("[LobbyJoinWaiter] Successfully started client via Relay.");
-
-                        // If NetworkManager is available, listen for the OnClientConnectedCallback
-                        bool callbackFired = false;
-                        System.Action<ulong> onConnected = null;
-                        if (NetworkManager.Singleton != null)
-                        {
-                            onConnected = (clientId) =>
-                            {
-                                // When this client receives its own connection event, load the scene
-                                if (clientId == NetworkManager.Singleton.LocalClientId)
-                                {
-                                    callbackFired = true;
-                                    NetworkManager.Singleton.OnClientConnectedCallback -= onConnected;
-                                    Debug.Log("[LobbyJoinWaiter] OnClientConnectedCallback fired for local client -> loading Game scene.");
-                                    SceneManager.LoadScene("Game");
-                                }
-                            };
-
-                            NetworkManager.Singleton.OnClientConnectedCallback += onConnected;
-                        }
-
-                        // Wait up to 10s for the callback to fire (connection)
-                        float connTimer = 0f;
-                        while (!callbackFired && connTimer < 10f)
-                        {
-                            connTimer += Time.deltaTime;
-                            yield return null;
-                        }
-
-                        if (!callbackFired)
-                        {
-                            Debug.LogWarning("[LobbyJoinWaiter] Connection callback not observed within timeout. Attempting to load Game scene anyway.");
-                            // cleanup subscription if still present
-                            if (NetworkManager.Singleton != null && onConnected != null)
-                                NetworkManager.Singleton.OnClientConnectedCallback -= onConnected;
-
-                            SceneManager.LoadScene("Game");
-                        }
-
-                        joined = true;
-                        break;
-                    }
-
-                    // backoff before retrying
-                    float backoff = 2f * attempts; // 2s, 4s, ...
-                    float t = 0f;
-                    Debug.Log($"[LobbyJoinWaiter] Backing off {backoff}s before next join attempt.");
-                    while (t < backoff)
-                    {
-                        t += Time.deltaTime;
-                        yield return null;
+                        _isProcessing = true;
+                        yield return StartCoroutine(JoinRelayWithRetry());
+                        yield break; // Bağlantı denemesi bittiğinde coroutine'i sonlandır
                     }
                 }
-
-                if (!joined)
-                {
-                    Debug.LogError("[LobbyJoinWaiter] All JoinRelay attempts failed. Giving up.");
-                }
-
-                Destroy(gameObject);
-                yield break;
             }
 
-            // wait a second then poll again
-            float timer = 0f;
-            while (timer < 3f)
+            yield return new WaitForSeconds(2f); // Her 2 saniyede bir kontrol et
+        }
+    }
+
+    private IEnumerator JoinRelayWithRetry()
+    {
+        int attempts = 0;
+        const int maxAttempts = 8;
+        bool joined = false;
+
+        while (attempts < maxAttempts && !joined)
+        {
+            attempts++;
+            float waitTime = 1.5f * attempts;
+            Debug.Log($"[LobbyJoinWaiter] Relay Denemesi {attempts}/{maxAttempts}...");
+
+            var joinTask = RelayManager.JoinRelay(_joinCode);
+            while (!joinTask.IsCompleted) yield return null;
+
+            if (joinTask.Result)
             {
-                timer += Time.deltaTime;
-                yield return null;
+                Debug.Log("[LobbyJoinWaiter] BAŞARILI! Relay'e bağlanıldı.");
+                joined = true;
+            }
+            else
+            {
+                Debug.LogWarning($"[LobbyJoinWaiter] Deneme {attempts} başarısız. {waitTime}s sonra tekrar...");
+                yield return new WaitForSeconds(waitTime);
             }
         }
+
+        if (!joined) Debug.LogError("[LobbyJoinWaiter] Oyuna girilemedi, tüm denemeler başarısız!");
+        
+        // Görev bitti, objeyi imha et
+        Destroy(gameObject);
     }
 }
