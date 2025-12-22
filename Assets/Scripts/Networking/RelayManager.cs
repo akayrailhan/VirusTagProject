@@ -63,11 +63,60 @@ public static class RelayManager
             var relayServerData = AllocationUtils.ToRelayServerData(allocation, "dtls");
 
             UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
-            transport.SetRelayServerData(relayServerData);
+            if (NetworkManager.Singleton == null)
+            {
+                Debug.LogError("[Relay] Cannot join relay: NetworkManager.Singleton is null.");
+                return false;
+            }
+
+            if (transport == null)
+            {
+                Debug.LogError("[Relay] Cannot join relay: UnityTransport component not found on NetworkManager.");
+                return false;
+            }
+
+            try
+            {
+                transport.SetRelayServerData(relayServerData);
+                // JoinAllocation provides server endpoint info; log host/port from allocation to avoid relying on RelayServerData fields
+                string host = "(unknown)";
+                int port = 0;
+                try
+                {
+                    if (allocation != null && allocation.ServerEndpoints != null && allocation.ServerEndpoints.Count > 0)
+                    {
+                        host = allocation.ServerEndpoints[0].Host;
+                        port = allocation.ServerEndpoints[0].Port;
+                    }
+                }
+                catch { }
+                Debug.Log($"[Relay] Relay server data set for client. Host={host} Port={port}");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[Relay] Failed to set relay server data: {ex.Message}");
+                return false;
+            }
 
             // 3. Client Başlat
-            NetworkManager.Singleton.StartClient();
-            return true;
+            try
+            {
+                NetworkManager.Singleton.StartClient();
+                Debug.Log("[Relay] NetworkManager.StartClient() called.");
+
+                // quick check if client state indicates starting (best-effort)
+                if (NetworkManager.Singleton.IsClient)
+                {
+                    Debug.Log("[Relay] NetworkManager reports IsClient = true (client started). Returning success.");
+                }
+
+                return true;
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[Relay] StartClient threw exception: {ex.Message}");
+                return false;
+            }
         }
         catch (RelayServiceException e)
         {
