@@ -46,20 +46,23 @@ public class LobbyItemUI : MonoBehaviour
                 LobbyUI.Instance.ShowLobbyDetails(joinedLobby);
             }
 
-            // 2. Lobi Verisinden "JoinCode"u Çek (güvenli şekilde)
+            // 2. Lobi Verisinden "JoinCode"u Çek ve HEMEN Relay'e bağlan
             if (joinedLobby.Data != null && joinedLobby.Data.ContainsKey("JoinCode") && !string.IsNullOrEmpty(joinedLobby.Data["JoinCode"].Value))
             {
                 string relayCode = joinedLobby.Data["JoinCode"].Value;
 
-                // 3. Relay ile hemen bağlanma: Host oyunu başlatana kadar bekle.
-                //    Bir waiter başlatıyoruz; host lobide "GameStarted" işaretini koyduğunda
-                //    waiter RelayManager.JoinRelay çağıracak.
-                Debug.Log($"[LobbyItemUI] Starting LobbyJoinWaiter with joinCode={relayCode}");
-                LobbyJoinWaiter.StartWaiting(joinedLobby.Id, relayCode);
+                Debug.Log($"[LobbyItemUI] Joining Relay immediately with joinCode={relayCode}");
+
+                bool relayOk = await RelayManager.JoinRelay(relayCode);
+                if (!relayOk)
+                {
+                    Debug.LogError("[LobbyItemUI] Failed to join relay; client will not connect to host.");
+                    joinButton.interactable = true;
+                }
             }
             else
             {
-                Debug.LogError("[LobbyItemUI] Joined lobby does not contain JoinCode in Data. Cannot start waiter.");
+                Debug.LogError("[LobbyItemUI] Joined lobby does not contain JoinCode in Data. Cannot join relay.");
                 joinButton.interactable = true;
             }
         }

@@ -70,15 +70,147 @@ public class LobbyUI : MonoBehaviour
         else _localReady = !_localReady;
     }
 
+<<<<<<< HEAD
+=======
+    private async void OnCreateClicked()
+    {
+        string lobbyName = lobbyNameInput.text;
+        if (string.IsNullOrEmpty(lobbyName)) lobbyName = "New Lobby";
+
+        createLobbyButton.interactable = false;
+
+        // 1. Önce Relay (Sunucu) Aç ve Kod Al
+        string joinCode = await RelayManager.CreateRelay(4); // Max 4 oyuncu
+
+        if (joinCode != null)
+        {
+            // 2. Sonra Lobi Aç ve Kodu İçine Göm
+            var createdLobby = await LobbyManager.CreateLobby(lobbyName, 4, joinCode);
+
+            // Show created lobby details in main panel
+            if (createdLobby != null)
+            {
+                ShowLobbyDetails(createdLobby);
+
+                // Host'u hemen başlat (Lobby sahnesindeyken)
+                // Böylece client'lar lobiye katılır katılmaz Relay'e bağlanıp
+                // NetworkManager üzerinden host'a bağlanabilirler.
+                RelayManager.StartHost();
+            }
+
+            // 3. Oyun Sahnesine Geç (KRİTİK ADIM)
+            // NetworkManager.SceneManager kullanarak sahne yüklenir.
+            // Bu sayede bağlı olan ve sonradan gelen tüm Client'lar da otomatik olarak bu sahneye geçer.
+            //NetworkManager.Singleton.SceneManager.LoadScene("Game", LoadSceneMode.Single);
+
+            Debug.Log("Lobby Created & Host Started! Loading Game Scene...");
+        }
+        else
+        {
+            createLobbyButton.interactable = true;
+        }
+    }
+
+    public void ShowLobbyDetails(Unity.Services.Lobbies.Models.Lobby lobby)
+    {
+        if (lobbyName != null)
+        {
+            lobbyName.text = lobby.Name;
+            lobbyName.gameObject.SetActive(true);
+            lobbyDetailsPanel.gameObject.SetActive(true);
+        }
+
+        if (playerCount != null)
+        {
+            playerCount.text = $"{lobby.Players.Count}/{lobby.MaxPlayers}";
+            playerCount.gameObject.SetActive(true);
+            // populate immediately from provided lobby to avoid timing issues
+            RefreshPlayerList(lobby);
+        }
+
+        _isInLobby = true;
+
+        // polling disabled: UI will update on explicit events (join/create/ready)
+
+        // initialize cache from provided lobby
+        if (lobby != null)
+        {
+            UpdatePlayerCacheFromLobby(lobby);
+        }
+
+        StopAllCoroutines(); // Önce varsa eskiyi durdur
+        StartCoroutine(PollLobbyUpdates());
+
+    }
+
+    // Oyuncu herhangi bir lobide değilse çağrılır
+    public void ClearLobbyDetails()
+    {
+        _isInLobby = false;
+        if (lobbyName != null)
+        {
+            lobbyName.text = string.Empty;
+            lobbyName.gameObject.SetActive(false);
+            lobbyDetailsPanel.gameObject.SetActive(false);
+        }
+
+        if (playerCount != null)
+        {
+            playerCount.text = string.Empty;
+            playerCount.gameObject.SetActive(false);
+        }
+
+        // polling disabled: nothing to stop
+        StopAllCoroutines();
+    }
+
+    private bool _isInLobby = false;
+
+    private int _lastPlayerCount = -1;
+    // cache player ready states to avoid unnecessary UI refreshes
+    private System.Collections.Generic.Dictionary<string, bool> _playerReadyCache = new System.Collections.Generic.Dictionary<string, bool>();
+
+>>>>>>> fix-from-daab11f
     private async void OnStartGameClicked()
     {
         if (NetworkManager.Singleton == null || !LobbyManager.IsHostLocal) return;
         if (!await LobbyManager.AreAllPlayersReady(LobbyManager.CurrentLobbyId)) return;
 
+<<<<<<< HEAD
         startGameButton.interactable = false;
         // Olay Tabanlı Başlatma: Sunucu hazır olana kadar lobi bayrağını güncelleme
         NetworkManager.Singleton.OnServerStarted += HandleServerStarted;
         RelayManager.StartHost();
+=======
+        // Only the local lobby owner can start the game (we track ownership in LobbyManager)
+        if (!LobbyManager.IsHostLocal)
+        {
+            Debug.Log("Only host can start the game.");
+            return;
+        }
+
+        // Before starting, ensure all players are ready
+        if (string.IsNullOrEmpty(LobbyManager.CurrentLobbyId))
+        {
+            Debug.LogWarning("No current lobby id set.");
+            return;
+        }
+
+        bool allReady = await LobbyManager.AreAllPlayersReady(LobbyManager.CurrentLobbyId);
+        if (!allReady)
+        {
+            Debug.Log("Cannot start game: not all players are ready.");
+            return;
+        }
+
+        // Host zaten Lobby oluştururken başlatıldı.
+        // Sadece GameStarted bayrağını güncelle (isteğe bağlı) ve sahneyi yükle.
+        _ = await LobbyManager.SetGameStarted(LobbyManager.CurrentLobbyId);
+
+        // Networked scene load: host Game sahnesini yüklediğinde, bağlı tüm client'lar
+        // otomatik olarak aynı sahneye geçer.
+        NetworkManager.Singleton.SceneManager.LoadScene("Game", LoadSceneMode.Single);
+>>>>>>> fix-from-daab11f
     }
 
     private async void HandleServerStarted()
