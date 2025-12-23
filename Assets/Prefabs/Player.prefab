@@ -1,5 +1,36 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1113104089945850579
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 8771373134708997466}
+  m_Layer: 3
+  m_Name: ProjectileSpawnPoint
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &8771373134708997466
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1113104089945850579}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.025, y: 0.5156, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 144325704055875957}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &3162733024550932241
 GameObject:
   m_ObjectHideFlags: 0
@@ -103,6 +134,7 @@ GameObject:
   - component: {fileID: 1022424577273446226}
   - component: {fileID: 1563981195788609478}
   - component: {fileID: 1827371635492076488}
+  - component: {fileID: 540410314752163012}
   m_Layer: 3
   m_Name: Player
   m_TagString: Untagged
@@ -233,7 +265,7 @@ Rigidbody2D:
   m_Interpolate: 0
   m_SleepingMode: 1
   m_CollisionDetection: 0
-  m_Constraints: 0
+  m_Constraints: 4
 --- !u!61 &4140210370903931412
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -342,6 +374,7 @@ MonoBehaviour:
   inputReader: {fileID: 11400000, guid: 709d3738f5c791145b78f0503105b123, type: 2}
   rb: {fileID: 4072440282687636504}
   speed: 5
+  gameSceneName: Game
   playerLayer:
     serializedVersion: 2
     m_Bits: 0
@@ -361,6 +394,26 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   inputReader: {fileID: 11400000, guid: 709d3738f5c791145b78f0503105b123, type: 2}
   turretTransform: {fileID: 8103412037500490646}
+--- !u!114 &540410314752163012
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3913954045652059360}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4bc726a66ddecd1419e6936c5e8a6dc3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
+  inputReader: {fileID: 11400000, guid: 709d3738f5c791145b78f0503105b123, type: 2}
+  projectileSpawnPoint: {fileID: 8771373134708997466}
+  serverProjectilePrefab: {fileID: 2822954181369956966, guid: f5db4b4f0ea2bd74bae6e79ce706ae14, type: 3}
+  clientProjectilePrefab: {fileID: 495808375689828224, guid: 12323e7d134ecec46af48c72408b11f2, type: 3}
+  playerCollider: {fileID: 4140210370903931412}
+  projectileSpeed: 15
+  fireRate: 0.5
 --- !u!1 &6979447773182110587
 GameObject:
   m_ObjectHideFlags: 0
@@ -390,7 +443,8 @@ Transform:
   m_LocalPosition: {x: 0, y: 0.5, z: 0}
   m_LocalScale: {x: 0.2, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 8771373134708997466}
   m_Father: {fileID: 8103412037500490646}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!212 &3244742533294387212
