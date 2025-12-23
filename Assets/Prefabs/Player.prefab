@@ -135,6 +135,7 @@ GameObject:
   - component: {fileID: 1563981195788609478}
   - component: {fileID: 1827371635492076488}
   - component: {fileID: 540410314752163012}
+  - component: {fileID: 3750977196491686928}
   m_Layer: 3
   m_Name: Player
   m_TagString: Untagged
@@ -414,6 +415,22 @@ MonoBehaviour:
   playerCollider: {fileID: 4140210370903931412}
   projectileSpeed: 15
   fireRate: 0.5
+--- !u!114 &3750977196491686928
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3913954045652059360}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a7a9035ddcaf4f04f9a2ccbab0f4a295, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ShowTopMostFoldoutHeaderGroup: 1
+  bodyRenderer: {fileID: 3509787496765013473}
+  cleanColor: {r: 0, g: 0, b: 1, a: 1}
+  infectedColor: {r: 1, g: 0, b: 0, a: 1}
 --- !u!1 &6979447773182110587
 GameObject:
   m_ObjectHideFlags: 0

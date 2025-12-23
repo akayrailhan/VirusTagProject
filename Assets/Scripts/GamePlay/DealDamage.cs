@@ -12,37 +12,47 @@ public class DealDamage : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D other)
     {
-        // Sadece sunucuda çalışır
+        // 1. Sadece sunucuda çalışır
         if (!NetworkManager.Singleton.IsServer) return;
 
-        // Mermi bir oyuncuya çarptı mı?
+        // 2. Mermi bir oyuncuya çarptı mı?
         if (other.TryGetComponent(out NetworkObject hitNetworkObject))
         {
             // Kendini vurmayı engelle
             if (hitNetworkObject.OwnerClientId == _ownerClientId) return;
 
-            Debug.Log($"[Server] Hit Player: {hitNetworkObject.OwnerClientId}");
+            Debug.Log($"[Server] Projectile from {_ownerClientId} hit {hitNetworkObject.OwnerClientId}");
 
-            // Mermiyi ağ üzerinden yok et
-            DespawnOrDestroy();
-        }
-        else if (other.CompareTag("Wall")) // Duvara çarptıysa da yok et
-        {
-            DespawnOrDestroy();
-        }
-    }
+            // --- VİRÜS MANTIĞI BAŞLANGICI ---
 
-    private void DespawnOrDestroy()
-    {
-        var netObj = GetComponent<NetworkObject>();
+            // A) Vuran Oyuncuyu Bul (Merminin Sahibi)
+            if (NetworkManager.Singleton.ConnectedClients.TryGetValue(_ownerClientId, out NetworkClient shooterClient))
+            {
+                var shooterState = shooterClient.PlayerObject.GetComponent<PlayerState>();
 
-        // NetworkObject ise -> Despawn (sunucu tüm client’lardan kaldırır)
-        if (netObj != null && netObj.IsSpawned)
-        {
-            netObj.Despawn(true);
+                // Eğer vuran kişi ZATEN virüslüyse, virüsü devreder!
+                // (Eğer virüslü değilse mermi atamaz kuralı varsa buraya eklenir)
+                if (shooterState.CurrentState.Value.IsInfected)
+                {
+                    // Vuran kişi temizlenir
+                    shooterState.SetInfectionStatus(false);
+
+                    // B) Vurulan Oyuncuyu Bul
+                    if (hitNetworkObject.TryGetComponent(out PlayerState hitPlayerState))
+                    {
+                        // Vurulan kişi virüslü olur
+                        hitPlayerState.SetInfectionStatus(true);
+                        Debug.Log("VIRUS TRANSFERRED!");
+                    }
+                }
+            }
+
+            // --- VİRÜS MANTIĞI BİTİŞİ ---
+
+            // Mermiyi yok et
+            Destroy(gameObject);
         }
-        // Normal obje ise -> klasik Destroy
-        else
+        else if (other.CompareTag("Wall"))
         {
             Destroy(gameObject);
         }
