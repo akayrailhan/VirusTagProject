@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 307597159897747935}
   - component: {fileID: 3509787496765013473}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Body
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -103,7 +103,7 @@ GameObject:
   - component: {fileID: 1022424577273446226}
   - component: {fileID: 1563981195788609478}
   - component: {fileID: 1827371635492076488}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Player
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -342,6 +342,10 @@ MonoBehaviour:
   inputReader: {fileID: 11400000, guid: 709d3738f5c791145b78f0503105b123, type: 2}
   rb: {fileID: 4072440282687636504}
   speed: 5
+  playerLayer:
+    serializedVersion: 2
+    m_Bits: 0
+  checkRadius: 0.5
 --- !u!114 &1827371635492076488
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -367,7 +371,7 @@ GameObject:
   m_Component:
   - component: {fileID: 144325704055875957}
   - component: {fileID: 3244742533294387212}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Barrel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -454,7 +458,7 @@ GameObject:
   m_Component:
   - component: {fileID: 8103412037500490646}
   - component: {fileID: 4513241051467068628}
-  m_Layer: 0
+  m_Layer: 3
   m_Name: Turret
   m_TagString: Untagged
   m_Icon: {fileID: 0}

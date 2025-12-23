@@ -5,14 +5,17 @@ using System.Collections.Generic;
 using Unity.Services.Lobbies.Models;
 using Unity.Netcode;
 using UnityEngine.SceneManagement;
-using System.Collections;
-using Unity.Services.Lobbies;
-using System.Threading.Tasks;
 
 public class LobbyUI : MonoBehaviour
 {
     public static LobbyUI Instance;
 
+    private void Awake()
+    {
+        Instance = this;
+        // Başlangıçta oyuncu herhangi bir lobide değilse alanları gizle
+        ClearLobbyDetails();
+    }
     [Header("Main Panel")]
     public Button createLobbyButton;
     public Button refreshButton;
@@ -24,16 +27,10 @@ public class LobbyUI : MonoBehaviour
     public TMP_InputField lobbyNameInput;
 
     [Header("List Panel")]
-    public Transform contentParent;
+    public Transform contentParent; // Liste elemanlarının dizileceği yer
     public Transform playerList;
-    public GameObject lobbyItemPrefab;
+    public GameObject lobbyItemPrefab; // Listedeki tek satırın tasarımı (Prefab)
     public GameObject playerListItem;
-
-    private bool _isInLobby = false;
-    private bool _localReady = false;
-
-    private void Awake() { Instance = this; ClearLobbyDetails(); }
-
     private void Start()
     {
         createLobbyButton.onClick.AddListener(OnCreateClicked);
@@ -42,36 +39,33 @@ public class LobbyUI : MonoBehaviour
         if (readyButton != null) readyButton.onClick.AddListener(OnReadyClicked);
     }
 
-    private async void OnCreateClicked()
-    {
-        string name = string.IsNullOrWhiteSpace(lobbyNameInput.text) ? "New Lobby" : lobbyNameInput.text;
-        createLobbyButton.interactable = false;
-
-        string joinCode = await RelayManager.CreateRelay(4);
-        if (!string.IsNullOrEmpty(joinCode))
-        {
-            Lobby createdLobby = await LobbyManager.CreateLobby(name, 4, joinCode);
-            if (createdLobby != null) ShowLobbyDetails(createdLobby);
-            else createLobbyButton.interactable = true;
-        }
-        else createLobbyButton.interactable = true;
-    }
+    private bool _localReady = false;
 
     private async void OnReadyClicked()
     {
-        if (string.IsNullOrEmpty(LobbyManager.CurrentLobbyId)) return;
+        if (string.IsNullOrEmpty(LobbyManager.CurrentLobbyId))
+        {
+            Debug.LogWarning("Not in a lobby.");
+            return;
+        }
+
         _localReady = !_localReady;
         bool ok = await LobbyManager.SetPlayerReady(LobbyManager.CurrentLobbyId, _localReady);
-        if (ok)
+        if (!ok)
         {
-            var txt = readyButton.GetComponentInChildren<TextMeshProUGUI>();
-            if (txt != null) txt.text = _localReady ? "Unready" : "Ready";
+            Debug.LogWarning("Failed to set ready state.");
+            _localReady = !_localReady; // revert
+            return;
         }
-        else _localReady = !_localReady;
+
+        // Update button label if it's a TMP text child
+        var txt = readyButton.GetComponentInChildren<TextMeshProUGUI>();
+        if (txt != null) txt.text = _localReady ? "Unready" : "Ready";
+
+        // Refresh list to show updated ready states
+        RefreshPlayerList();
     }
 
-<<<<<<< HEAD
-=======
     private async void OnCreateClicked()
     {
         string lobbyName = lobbyNameInput.text;
@@ -170,18 +164,10 @@ public class LobbyUI : MonoBehaviour
     // cache player ready states to avoid unnecessary UI refreshes
     private System.Collections.Generic.Dictionary<string, bool> _playerReadyCache = new System.Collections.Generic.Dictionary<string, bool>();
 
->>>>>>> fix-from-daab11f
     private async void OnStartGameClicked()
     {
-        if (NetworkManager.Singleton == null || !LobbyManager.IsHostLocal) return;
-        if (!await LobbyManager.AreAllPlayersReady(LobbyManager.CurrentLobbyId)) return;
+        if (NetworkManager.Singleton == null) return;
 
-<<<<<<< HEAD
-        startGameButton.interactable = false;
-        // Olay Tabanlı Başlatma: Sunucu hazır olana kadar lobi bayrağını güncelleme
-        NetworkManager.Singleton.OnServerStarted += HandleServerStarted;
-        RelayManager.StartHost();
-=======
         // Only the local lobby owner can start the game (we track ownership in LobbyManager)
         if (!LobbyManager.IsHostLocal)
         {
@@ -210,83 +196,196 @@ public class LobbyUI : MonoBehaviour
         // Networked scene load: host Game sahnesini yüklediğinde, bağlı tüm client'lar
         // otomatik olarak aynı sahneye geçer.
         NetworkManager.Singleton.SceneManager.LoadScene("Game", LoadSceneMode.Single);
->>>>>>> fix-from-daab11f
     }
 
-    private async void HandleServerStarted()
+    private async void RefreshLobbyList()
     {
-        NetworkManager.Singleton.OnServerStarted -= HandleServerStarted;
-        // ÖNCE sunucu başladı, ŞİMDİ bayrağı "1" yapıyoruz
-        bool ok = await LobbyManager.SetGameStarted(LobbyManager.CurrentLobbyId);
-        if (ok) NetworkManager.Singleton.SceneManager.LoadScene("Game", LoadSceneMode.Single);
-    }
+        // Eski listeyi temizle
+        foreach (Transform child in contentParent) Destroy(child.gameObject);
 
-    public void ShowLobbyDetails(Lobby lobby)
-    {
-        if (lobby == null) return;
-        _isInLobby = true;
-        if (lobbyName != null) lobbyName.text = lobby.Name;
-        if (playerCount != null) playerCount.text = $"{lobby.Players.Count}/{lobby.MaxPlayers}";
-        lobbyDetailsPanel.gameObject.SetActive(true);
+        // Yeni listeyi çek
+        List<Lobby> lobbies = await LobbyManager.GetLobbies();
 
-        if (lobby.Data != null && lobby.Data.ContainsKey("JoinCode") && !LobbyManager.IsHostLocal)
+        // Ekrana bas
+        foreach (Lobby lobby in lobbies)
         {
-            LobbyJoinWaiter.StartWaiting(lobby.Id, lobby.Data["JoinCode"].Value);
+            GameObject item = Instantiate(lobbyItemPrefab, contentParent);
+            // LobbyItem bileşenini bul ve veriyi doldur
+            LobbyItemUI itemScript = item.GetComponent<LobbyItemUI>();
+            if (itemScript != null)
+            {
+                itemScript.Setup(lobby);
+            }
+        }
+    }
+
+    private async void RefreshPlayerList()
+    {
+        // default: fetch from server
+        var players = await LobbyManager.GetPlayersInfoById(LobbyManager.CurrentLobbyId);
+        RefreshPlayerListFromInfo(players);
+    }
+
+    // Overload: populate list immediately from a Lobby instance
+    private void RefreshPlayerList(Unity.Services.Lobbies.Models.Lobby lobby)
+    {
+        var infos = new System.Collections.Generic.List<LobbyManager.PlayerInfo>();
+        if (lobby != null && lobby.Players != null)
+        {
+            foreach (var p in lobby.Players)
+            {
+                var info = new LobbyManager.PlayerInfo { Id = p.Id, Name = p.Id, Ready = false };
+                if (p.Data != null)
+                {
+                    if (p.Data.ContainsKey("PlayerName") && !string.IsNullOrEmpty(p.Data["PlayerName"].Value))
+                        info.Name = p.Data["PlayerName"].Value;
+                    if (p.Data.ContainsKey("Ready") && p.Data["Ready"].Value == "1")
+                        info.Ready = true;
+                }
+                infos.Add(info);
+            }
         }
 
-        StopAllCoroutines();
-        StartCoroutine(PollLobbyUpdates());
+        RefreshPlayerListFromInfo(infos);
     }
 
-    private IEnumerator PollLobbyUpdates()
+    private void RefreshPlayerListFromInfo(System.Collections.Generic.List<LobbyManager.PlayerInfo> players)
+    {
+        // Eski listeyi temizle
+        foreach (Transform child in playerList) Destroy(child.gameObject);
+
+        // Ekrana bas
+        foreach (var p in players)
+        {
+            GameObject item = Instantiate(playerListItem, playerList, false);
+            // ensure transform/scale are correct for UI layout
+            item.transform.localScale = Vector3.one;
+            var itemRt = item.GetComponent<RectTransform>();
+            if (itemRt != null)
+            {
+                // reset anchors/position so LayoutGroup controls placement
+                itemRt.anchorMin = new Vector2(0f, 1f);
+                itemRt.anchorMax = new Vector2(1f, 1f);
+                itemRt.anchoredPosition = Vector2.zero;
+                itemRt.sizeDelta = new Vector2(itemRt.sizeDelta.x, itemRt.sizeDelta.y);
+
+                // ensure there's a LayoutElement so parent LayoutGroup can size it
+                var le = item.GetComponent<UnityEngine.UI.LayoutElement>();
+                if (le == null) le = item.AddComponent<UnityEngine.UI.LayoutElement>();
+                float pref = UnityEngine.UI.LayoutUtility.GetPreferredHeight(itemRt);
+                if (pref <= 0f) pref = 30f; // fallback
+                le.preferredHeight = pref;
+                le.flexibleWidth = 1f;
+            }
+            // PlayerListItemUI bileşenini bulup ismi ata
+            PlayerListItemUI itemScript = item.GetComponent<PlayerListItemUI>();
+            if (itemScript != null)
+            {
+                itemScript.Setup(p.Name, p.Ready);
+                continue;
+            }
+
+            // Fallback: doğrudan TextMeshPro veya Text bulunup yaz
+            var tmp = item.GetComponentInChildren<TextMeshProUGUI>();
+            if (tmp != null) { tmp.text = p.Name; continue; }
+            var uiText = item.GetComponentInChildren<Text>();
+            if (uiText != null) uiText.text = p.Name;
+        }
+        // Force layout rebuild so items are positioned correctly (requires a LayoutGroup on parent)
+        var rt = playerList as RectTransform;
+        if (rt != null)
+        {
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
+        }
+    }
+
+    // Helpers to detect lobby changes (players join/leave or ready state changes)
+    private void UpdatePlayerCacheFromLobby(Unity.Services.Lobbies.Models.Lobby lobby)
+    {
+        _playerReadyCache.Clear();
+        if (lobby == null || lobby.Players == null) return;
+        foreach (var p in lobby.Players)
+        {
+            bool ready = false;
+            if (p.Data != null && p.Data.ContainsKey("Ready") && p.Data["Ready"].Value == "1") ready = true;
+            _playerReadyCache[p.Id] = ready;
+        }
+    }
+
+    private bool HasLobbyChanged(Unity.Services.Lobbies.Models.Lobby lobby)
+    {
+        if (lobby == null || lobby.Players == null) return false;
+
+        // count changed
+        if (lobby.Players.Count != _playerReadyCache.Count) return true;
+
+        foreach (var p in lobby.Players)
+        {
+            bool ready = false;
+            if (p.Data != null && p.Data.ContainsKey("Ready") && p.Data["Ready"].Value == "1") ready = true;
+
+            if (!_playerReadyCache.ContainsKey(p.Id)) return true;
+            if (_playerReadyCache[p.Id] != ready) return true;
+        }
+
+        return false;
+    }
+
+    private System.Collections.Generic.List<LobbyManager.PlayerInfo> ConvertLobbyToPlayerInfo(Unity.Services.Lobbies.Models.Lobby lobby)
+    {
+        var infos = new System.Collections.Generic.List<LobbyManager.PlayerInfo>();
+        if (lobby == null || lobby.Players == null) return infos;
+
+        foreach (var p in lobby.Players)
+        {
+            var info = new LobbyManager.PlayerInfo { Id = p.Id, Name = p.Id, Ready = false };
+            if (p.Data != null)
+            {
+                if (p.Data.ContainsKey("PlayerName") && !string.IsNullOrEmpty(p.Data["PlayerName"].Value))
+                    info.Name = p.Data["PlayerName"].Value;
+                if (p.Data.ContainsKey("Ready") && p.Data["Ready"].Value == "1")
+                    info.Ready = true;
+            }
+            infos.Add(info);
+        }
+
+        return infos;
+    }
+
+    private System.Collections.IEnumerator PollLobbyUpdates()
     {
         while (_isInLobby && !string.IsNullOrEmpty(LobbyManager.CurrentLobbyId))
         {
             var task = LobbyManager.GetLobbyById(LobbyManager.CurrentLobbyId);
-            yield return new WaitUntil(() => task.IsCompleted);
+            while (!task.IsCompleted) yield return null;
 
-            if (task.Result != null)
+            var lobby = task.Result;
+            if (lobby != null && lobby.Players != null)
             {
-                Lobby lobby = task.Result;
-                if (playerCount != null) playerCount.text = $"{lobby.Players.Count}/{lobby.MaxPlayers}";
-                RefreshPlayerList(lobby);
-            }
-            yield return new WaitForSeconds(3f);
-        }
-    }
+                _lastPlayerCount = lobby.Players.Count;
+                if (playerCount != null)
+                {
+                    playerCount.text = $"{lobby.Players.Count}/{lobby.MaxPlayers}";
+                    playerCount.gameObject.SetActive(true);
+                }
 
-    public void RefreshPlayerList(Lobby lobby)
-    {
-        foreach (Transform child in playerList) Destroy(child.gameObject);
-        foreach (var p in lobby.Players)
-        {
-            GameObject item = Instantiate(playerListItem, playerList);
-            PlayerListItemUI itemScript = item.GetComponent<PlayerListItemUI>();
-            if (itemScript != null)
+                // Only refresh UI when players join/leave or ready state changes
+                if (HasLobbyChanged(lobby))
+                {
+                    var infos = ConvertLobbyToPlayerInfo(lobby);
+                    RefreshPlayerListFromInfo(infos);
+                    UpdatePlayerCacheFromLobby(lobby);
+                }
+            }
+
+            float timer = 0f;
+            while (timer < 3f)
             {
-                string pName = p.Data?.ContainsKey("PlayerName") == true ? p.Data["PlayerName"].Value : "Unknown";
-                bool isReady = p.Data?.ContainsKey("Ready") == true && p.Data["Ready"].Value == "1";
-                itemScript.Setup(pName, isReady);
+                timer += Time.deltaTime;
+                yield return null;
             }
         }
-    }
 
-    public void ClearLobbyDetails()
-    {
-        _isInLobby = false;
-        if (lobbyDetailsPanel != null) lobbyDetailsPanel.gameObject.SetActive(false);
-        StopAllCoroutines();
-    }
-    
-    private async void RefreshLobbyList()
-    {
-        foreach (Transform child in contentParent) Destroy(child.gameObject);
-        List<Lobby> lobbies = await LobbyManager.GetLobbies();
-        foreach (Lobby lobby in lobbies)
-        {
-            GameObject item = Instantiate(lobbyItemPrefab, contentParent);
-            LobbyItemUI itemScript = item.GetComponent<LobbyItemUI>();
-            if (itemScript != null) itemScript.Setup(lobby);
-        }
     }
 }
