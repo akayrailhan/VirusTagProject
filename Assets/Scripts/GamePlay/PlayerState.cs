@@ -17,18 +17,16 @@ public class PlayerState : NetworkBehaviour
     [SerializeField] private Color infectedColor = Color.red;
 
     public override void OnNetworkSpawn()
-    {
-        // Değişken değiştiğinde (örn: vurulunca) OnStateChanged çalışsın
-        CurrentState.OnValueChanged += OnStateChanged;
+{
+    CurrentState.OnValueChanged += OnStateChanged;
+    UpdateColor(CurrentState.Value.IsInfected);
 
-        // İlk açılışta rengi ayarla
-        UpdateColor(CurrentState.Value.IsInfected);
-        // HACK: Host (ilk oyuncu) her zaman virüslü başlasın
-        if (IsServer && OwnerClientId == 0)
-        {
-            SetInfectionStatus(true);
-        }
-    }
+    if (IsServer)
+        InfectionManager.Instance?.RegisterPlayer(this); // opsiyonel
+}
+
+
+
 
     public override void OnNetworkDespawn()
     {

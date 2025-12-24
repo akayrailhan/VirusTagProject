@@ -1,5 +1,6 @@
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class ProjectileLauncher : NetworkBehaviour
 {
@@ -14,13 +15,23 @@ public class ProjectileLauncher : NetworkBehaviour
     [SerializeField] private float projectileSpeed = 15f;
     [SerializeField] private float fireRate = 0.5f; // Saniyede 2 mermi
 
+    [Header("Scene Gate")]
+    [SerializeField] private string gameSceneName = "Game";
+
     private bool _shouldFire;
     private float _previousFireTime;
+
+    private bool _fireUnlocked; // Game'e bir kere girince true olur
 
     public override void OnNetworkSpawn()
     {
         if (!IsOwner) return;
+
         inputReader.FireEvent += HandleFire;
+
+        // Eğer zaten Game sahnesinde spawn olduysa kilidi aç
+        if (SceneManager.GetActiveScene().name == gameSceneName)
+            _fireUnlocked = true;
     }
 
     public override void OnNetworkDespawn()
@@ -31,12 +42,34 @@ public class ProjectileLauncher : NetworkBehaviour
 
     private void HandleFire()
     {
+        // İlk ateş denemesinde sahneyi kontrol et
+        if (!_fireUnlocked)
+        {
+            if (SceneManager.GetActiveScene().name == gameSceneName)
+            {
+                _fireUnlocked = true; // bir kere açıldı mı, artık kontrol yok
+            }
+            else
+            {
+                // Game'de değil -> ateş yok
+                _shouldFire = false;
+                return;
+            }
+        }
+
         _shouldFire = true;
     }
 
     private void Update()
     {
         if (!IsOwner) return;
+
+        // Kilitliyken ateşlemeyi garanti kapat
+        if (!_fireUnlocked)
+        {
+            _shouldFire = false;
+            return;
+        }
 
         if (_shouldFire && Time.time >= _previousFireTime + fireRate)
         {

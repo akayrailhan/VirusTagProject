@@ -195,6 +195,7 @@ public class LobbyUI : MonoBehaviour
 
         // Networked scene load: host Game sahnesini yüklediğinde, bağlı tüm client'lar
         // otomatik olarak aynı sahneye geçer.
+        InfectionManager.Instance?.StartMatchServerRpc();
         NetworkManager.Singleton.SceneManager.LoadScene("Game", LoadSceneMode.Single);
     }
 
