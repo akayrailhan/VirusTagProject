@@ -19,6 +19,12 @@ public class PlayerMovement : NetworkBehaviour
     [SerializeField] private LayerMask playerLayer;     // Player layer'ını seç
     [SerializeField] private float checkRadius = 0.5f;  // spawn noktası kontrol yarıçapı
 
+    [Header("Slow / Stun")]
+    [SerializeField] private float slowMultiplier = 0.5f; // %50 hız
+    [SerializeField] private float slowDuration = 2f;     // 2 saniye
+
+    private float _speedMultiplier = 1f;
+    private float _slowEndTime;
     private Vector2 _moveDirection;
     private bool _movementUnlocked;
 
@@ -86,7 +92,24 @@ public class PlayerMovement : NetworkBehaviour
             return;
         }
 
-        rb.linearVelocity = _moveDirection * speed;
+        // Yavaşlama süresi bittiyse hızı normale çek
+        if (_speedMultiplier < 1f && Time.time >= _slowEndTime)
+        {
+            _speedMultiplier = 1f;
+        }
+
+        float finalSpeed = speed * _speedMultiplier;
+        rb.linearVelocity = _moveDirection * finalSpeed;
+    }
+
+    [ClientRpc]
+    public void ApplySlowClientRpc(float multiplier, float duration)
+    {
+        // Hareketi sadece owner kontrol ettiği için owner'ı yavaşlatmamız yeterli
+        if (!IsOwner) return;
+
+        _speedMultiplier = multiplier;
+        _slowEndTime = Time.time + duration;
     }
 
     // --- Spawn seçimi: rastgele sırala, boş olanı bul ---

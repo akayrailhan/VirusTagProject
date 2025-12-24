@@ -29,20 +29,32 @@ public class DealDamage : MonoBehaviour
             if (NetworkManager.Singleton.ConnectedClients.TryGetValue(_ownerClientId, out NetworkClient shooterClient))
             {
                 var shooterState = shooterClient.PlayerObject.GetComponent<PlayerState>();
+                bool shooterInfected = shooterState.CurrentState.Value.IsInfected;
 
-                // Eğer vuran kişi ZATEN virüslüyse, virüsü devreder!
-                // (Eğer virüslü değilse mermi atamaz kuralı varsa buraya eklenir)
-                if (shooterState.CurrentState.Value.IsInfected)
+                // B) Vurulan Oyuncuyu Bul
+                if (hitNetworkObject.TryGetComponent(out PlayerState hitPlayerState))
                 {
-                    // Vuran kişi temizlenir
-                    shooterState.SetInfectionStatus(false);
+                    bool hitInfected = hitPlayerState.CurrentState.Value.IsInfected;
 
-                    // B) Vurulan Oyuncuyu Bul
-                    if (hitNetworkObject.TryGetComponent(out PlayerState hitPlayerState))
+                    // 1) Eğer vuran kişi ZATEN virüslüyse, virüsü devreder (eski kural)
+                    if (shooterInfected)
                     {
+                        // Vuran kişi temizlenir
+                        shooterState.SetInfectionStatus(false);
+
                         // Vurulan kişi virüslü olur
                         hitPlayerState.SetInfectionStatus(true);
                         Debug.Log("VIRUS TRANSFERRED!");
+                    }
+                    // 2) Eğer vuran TEMİZ (mavi) ve vurulan VİRÜSLÜ (kırmızı) ise -> yavaşlat
+                    else if (!shooterInfected && hitInfected)
+                    {
+                        if (hitNetworkObject.TryGetComponent(out PlayerMovement hitMovement))
+                        {
+                            // 0.5f = %50 hız, 2f = 2 saniye
+                            hitMovement.ApplySlowClientRpc(0.5f, 2f);
+                            Debug.Log("INFECTED PLAYER SLOWED!");
+                        }
                     }
                 }
             }

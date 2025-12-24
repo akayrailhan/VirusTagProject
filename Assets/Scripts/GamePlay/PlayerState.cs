@@ -17,15 +17,23 @@ public class PlayerState : NetworkBehaviour
     [SerializeField] private Color infectedColor = Color.red;
 
     public override void OnNetworkSpawn()
-{
-    CurrentState.OnValueChanged += OnStateChanged;
-    UpdateColor(CurrentState.Value.IsInfected);
+    {
+        CurrentState.OnValueChanged += OnStateChanged;
+        UpdateColor(CurrentState.Value.IsInfected);
 
-    if (IsServer)
-        InfectionManager.Instance?.RegisterPlayer(this); // opsiyonel
-}
+        if (IsServer)
+            InfectionManager.Instance?.RegisterPlayer(this); // opsiyonel
 
+        // Owner olan her client, kendi ismini sunucuya göndersin
+        if (IsOwner)
+        {
+            string name = ApplicationController.Instance != null
+                ? ApplicationController.Instance.GetPlayerName()
+                : "Player";
 
+            SubmitNameServerRpc(name);
+        }
+    }
 
 
     public override void OnNetworkDespawn()
@@ -62,6 +70,14 @@ public class PlayerState : NetworkBehaviour
         CurrentState.Value = data;
     }
 
+    [ServerRpc]
+    private void SubmitNameServerRpc(string playerName)
+    {
+        if (!IsServer) return;
+
+        // Bu PlayerState'in sahibi hangi client ise, o ID'yi kullan
+        InitPlayer(OwnerClientId, playerName);
+    }
     // İsmi ve ID'yi ayarla (Connection Approval sonrası çağrılacak)
     public void InitPlayer(ulong clientId, string name)
     {

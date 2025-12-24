@@ -11,6 +11,12 @@ public class InfectionManager : NetworkBehaviour
     [SerializeField] private int playersToStart = 4;
     [SerializeField] private string gameSceneName = "Game";
 
+    [Header("Scoring")]
+    [SerializeField] private float scoreTickInterval = 1f; // kaç saniyede bir puan
+    [SerializeField] private int scorePerTick = 1;         // her tikte kaç puan
+
+    private float _nextScoreTime;
+
     private readonly List<PlayerState> _players = new();
     private bool _startRequested;
     private bool _matchStarted;
@@ -117,6 +123,27 @@ public class InfectionManager : NetworkBehaviour
         Debug.Log($"[InfectionManager] Collected players: {_players.Count}/{playersToStart}");
     }
 
+    private void Update()
+    {
+        if (!IsServer) return;      // sadece server puan versin
+        if (!_matchStarted) return; // maç başlamadıysa puan yok
+
+        if (Time.time < _nextScoreTime) return;
+        _nextScoreTime = Time.time + scoreTickInterval;
+
+        // Her tikte: temiz olanların skorunu arttır
+        foreach (var p in _players)
+        {
+            if (p == null) continue;
+
+            var data = p.CurrentState.Value;
+            if (!data.IsInfected)   // temiz ise
+            {
+                data.Score += scorePerTick;
+                p.CurrentState.Value = data; // NetworkVariable güncelle
+            }
+        }
+    }
     private void TryStartMatch()
     {
         if (!IsServer) return;
