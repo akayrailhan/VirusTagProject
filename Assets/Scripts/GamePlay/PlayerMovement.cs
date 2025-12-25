@@ -59,13 +59,9 @@ public class PlayerMovement : NetworkBehaviour
     private int _moveYHash;
     private int _speedHash;
 
-    private static readonly Vector2[] SpawnPositions =
-    {
-        new Vector2(7f,  4f),
-        new Vector2(7f, -4f),
-        new Vector2(-7f,-4f),
-        new Vector2(-7f, 4f),
-    };
+    // ✅ SpawnPoints (Game sahnesinden toplanacak)
+    private SpawnPoint[] _spawnPoints;
+    private bool _spawnedInGame; // DontDestroy olduğumuz için aynı Game girişinde 1 kere teleport et
 
     private void Awake()
     {
@@ -82,9 +78,8 @@ public class PlayerMovement : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        // Hem server hem client tarafında sahne adı uygunsa kilidi aç
-        if (SceneManager.GetActiveScene().name == gameSceneName)
-            _movementUnlocked = true;
+        // Scene gate
+        _movementUnlocked = SceneManager.GetActiveScene().name == gameSceneName;
 
         // Input sadece owner
         if (IsOwner)
@@ -100,18 +95,69 @@ public class PlayerMovement : NetworkBehaviour
             rb.simulated = false;
         }
 
-        // Spawn kararını server versin
-        if (IsServer)
-        {
-            Vector2 pos = PickRandomFreeSpawn();
-            TeleportOnServer(pos);
-        }
+        // ✅ DontDestroy ile sahne değişince spawn işini sahne yüklenince yapacağız
+        SceneManager.sceneLoaded += OnSceneLoaded;
+
+        // Eğer zaten Game sahnesindeysek (nadir), hemen dene
+        TrySpawnIfInGame(SceneManager.GetActiveScene());
     }
 
     public override void OnNetworkDespawn()
     {
         if (IsOwner && inputReader != null)
             inputReader.MoveEvent -= OnMove;
+
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        TrySpawnIfInGame(scene);
+    }
+
+    private void TrySpawnIfInGame(Scene scene)
+    {
+        _movementUnlocked = scene.name == gameSceneName;
+
+        // Game değilse flag’i sıfırla ki sonraki Game girişinde tekrar spawnlayabilelim
+        if (scene.name != gameSceneName)
+        {
+            _spawnedInGame = false;
+            return;
+        }
+
+        // Spawn kararını sadece server versin
+        if (!IsServer) return;
+
+        if (_spawnedInGame) return;
+        _spawnedInGame = true;
+
+        // Game sahnesindeki SpawnPoint'leri topla ve boş olana ışınla
+        CollectSpawnPointsFromScene(scene);
+        Vector2 pos = PickRandomFreeSpawnFromScene(scene);
+        TeleportOnServer(pos);
+    }
+
+    private void CollectSpawnPointsFromScene(Scene scene)
+    {
+        // Unity 2022+ : FindObjectsByType
+        var all = Object.FindObjectsByType<SpawnPoint>(FindObjectsSortMode.None);
+        if (all == null || all.Length == 0)
+        {
+            _spawnPoints = null;
+            return;
+        }
+
+        // Sadece o sahnedekileri al (DontDestroy sahnesindeki objeler karışmasın)
+        List<SpawnPoint> list = new List<SpawnPoint>(all.Length);
+        foreach (var sp in all)
+        {
+            if (sp == null) continue;
+            if (sp.gameObject.scene == scene)
+                list.Add(sp);
+        }
+
+        _spawnPoints = list.ToArray();
     }
 
     private void OnMove(Vector2 direction)
@@ -242,29 +288,35 @@ public class PlayerMovement : NetworkBehaviour
         _slowEndTime = Time.time + duration;
     }
 
-    // --- Spawn seçimi: rastgele sırala, boş olanı bul ---
-    private Vector2 PickRandomFreeSpawn()
+    // --- Spawn seçimi: Game sahnesindeki SpawnPoint'lerden boş olanı bul ---
+    private Vector2 PickRandomFreeSpawnFromScene(Scene scene)
     {
-        int n = SpawnPositions.Length;
-
-        List<int> idxs = new List<int>(n);
-        for (int i = 0; i < n; i++) idxs.Add(i);
-
-        for (int i = 0; i < n; i++)
+        if (_spawnPoints == null || _spawnPoints.Length == 0)
         {
-            int j = Random.Range(i, n);
-            (idxs[i], idxs[j]) = (idxs[j], idxs[i]);
+            // SpawnPoint bulunamazsa: mevcut konumda kal
+            return transform.position;
         }
 
-        foreach (int idx in idxs)
+        // basit shuffle
+        for (int i = 0; i < _spawnPoints.Length; i++)
         {
-            Vector2 p = SpawnPositions[idx];
-            bool occupied = Physics2D.OverlapCircle(p, checkRadius, playerLayer) != null;
+            int j = Random.Range(i, _spawnPoints.Length);
+            (_spawnPoints[i], _spawnPoints[j]) = (_spawnPoints[j], _spawnPoints[i]);
+        }
+
+        foreach (var sp in _spawnPoints)
+        {
+            if (sp == null) continue;
+
+            float r = Mathf.Max(checkRadius, sp.radius);
+            bool occupied = Physics2D.OverlapCircle(sp.transform.position, r, playerLayer) != null;
+
             if (!occupied)
-                return p;
+                return sp.transform.position;
         }
 
-        return SpawnPositions[Random.Range(0, n)];
+        // hepsi doluysa rastgele
+        return _spawnPoints[Random.Range(0, _spawnPoints.Length)].transform.position;
     }
 
     // --- Teleport: server setler, clientlara yayar ---
@@ -276,7 +328,7 @@ public class PlayerMovement : NetworkBehaviour
             rb.position = pos;
         }
 
-        // NetworkTransform bunu da sync'leyecek ama garanti olsun:
+        // NetworkTransform sync'leyecek ama garanti olsun:
         transform.position = pos;
 
         TeleportClientRpc(pos);
@@ -293,13 +345,4 @@ public class PlayerMovement : NetworkBehaviour
         }
         transform.position = pos;
     }
-
-#if UNITY_EDITOR
-    private void OnDrawGizmosSelected()
-    {
-        Gizmos.color = Color.yellow;
-        foreach (var p in SpawnPositions)
-            Gizmos.DrawWireSphere(p, checkRadius);
-    }
-#endif
 }
