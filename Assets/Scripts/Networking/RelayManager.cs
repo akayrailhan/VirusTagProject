@@ -13,7 +13,7 @@ public static class RelayManager
         {
             Allocation allocation = await RelayService.Instance.CreateAllocationAsync(maxConnections);
             string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
-            
+
             var relayServerData = AllocationUtils.ToRelayServerData(allocation, "dtls");
             UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
             if (transport != null) transport.SetRelayServerData(relayServerData);
@@ -48,6 +48,19 @@ public static class RelayManager
 
             if (!NetworkManager.Singleton.IsClient && !NetworkManager.Singleton.IsServer)
             {
+                // --- QUEST 6 EKLEMESİ BAŞLANGIÇ ---
+                // Oyuncu ismini al ve JSON/String olarak paketle
+                string playerName = ApplicationController.Instance != null ? ApplicationController.Instance.GetPlayerName() : "Unknown";
+                string authId = Unity.Services.Authentication.AuthenticationService.Instance.PlayerId;
+
+                // Basit bir JSON formatı yapıyoruz
+                string payload = $"{{\"name\":\"{playerName}\", \"authId\":\"{authId}\"}}";
+                byte[] payloadBytes = System.Text.Encoding.UTF8.GetBytes(payload);
+
+                // NetworkManager'a bu veriyi ver, bağlanırken göndersin
+                NetworkManager.Singleton.NetworkConfig.ConnectionData = payloadBytes;
+                // --- QUEST 6 EKLEMESİ BİTİŞ ---
+
                 return NetworkManager.Singleton.StartClient();
             }
             return true;

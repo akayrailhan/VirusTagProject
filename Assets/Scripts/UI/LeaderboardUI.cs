@@ -75,7 +75,19 @@ public class LeaderboardUI : MonoBehaviour
         for (int i = 0; i < list.Count; i++)
         {
             var p = list[i];
-            sb.AppendLine($"{i + 1}. {p.PlayerName.ToString()} : {p.Score}");
+            string line = $"{i + 1}. {p.PlayerName.ToString()} : {p.Score}";
+
+            // Eğer bu satırdaki oyuncu BEN isem (Local Client)
+            if (p.ClientId == NetworkManager.Singleton.LocalClientId)
+            {
+                // Sarı ve Kalın yap (TextMeshPro HTML tagleri ile)
+                sb.AppendLine($"<color=yellow><b>{line}</b></color>");
+            }
+            else
+            {
+                // Başkasıysa normal yaz
+                sb.AppendLine(line);
+            }
         }
 
         if (leaderboardText != null)

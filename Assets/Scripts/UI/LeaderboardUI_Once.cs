@@ -12,6 +12,7 @@ public class LeaderboardUI_Once : MonoBehaviour
 {
     [Header("UI")]
     [SerializeField] private TextMeshProUGUI leaderboardText;
+    [SerializeField] private TextMeshProUGUI winnerText;          // Kazanan: (isim)
 
     [Header("Options")]
     [SerializeField] private bool includeOnlyActive = true;
@@ -21,6 +22,9 @@ public class LeaderboardUI_Once : MonoBehaviour
     [SerializeField] private Button leaveButton;              // ✅ buraya butonu sürükle
     [SerializeField] private string lobbyMenuSceneName = "LobbyMenu";
     [SerializeField] private string currentLobbyId;           // opsiyonel (join sonrası SetCurrentLobbyId ile de set edebilirsin)
+
+    [Header("Exit Button")]
+    [SerializeField] private Button exitButton;               // Oyundan çık butonu
 
     private bool _leaving;
 
@@ -34,6 +38,16 @@ public class LeaderboardUI_Once : MonoBehaviour
         else
         {
             Debug.LogWarning("[LeaderboardUI_Once] leaveButton atanmadı (Inspector'dan ver).");
+        }
+
+        if (exitButton != null)
+        {
+            exitButton.onClick.RemoveListener(OnExitClicked);
+            exitButton.onClick.AddListener(OnExitClicked);
+        }
+        else
+        {
+            Debug.LogWarning("[LeaderboardUI_Once] exitButton atanmadı (Inspector'dan ver).");
         }
     }
 
@@ -68,19 +82,30 @@ public class LeaderboardUI_Once : MonoBehaviour
 
         list.Sort((a, b) => b.Score.CompareTo(a.Score));
 
+        // Leaderboard metni
         StringBuilder sb = new StringBuilder();
-for (int i = 0; i < list.Count; i++)
-{
-    var p = list[i];
-    sb.AppendLine($"{i + 1}. {p.PlayerName.ToString()} : {p.Score}");
-}
-
-if (leaderboardText != null)
-    leaderboardText.text = sb.ToString();
-
+        for (int i = 0; i < list.Count; i++)
+        {
+            var p = list[i];
+            sb.AppendLine($"{i + 1}. {p.PlayerName.ToString()} : {p.Score}");
+        }
 
         if (leaderboardText != null)
             leaderboardText.text = sb.ToString();
+
+        // Kazanan: ilk sıradaki oyuncu
+        if (winnerText != null)
+        {
+            if (list.Count > 0)
+            {
+                var winner = list[0];
+                winnerText.text = $"Kazanan : {winner.PlayerName.ToString()}";
+            }
+            else
+            {
+                winnerText.text = "Kazanan : -";
+            }
+        }
     }
 
     // Join sonrası çağırmak için
@@ -120,5 +145,36 @@ if (leaderboardText != null)
 
         // 3) Menüye dön
         SceneManager.LoadScene(lobbyMenuSceneName, LoadSceneMode.Single);
+    }
+
+    // Oyundan tamamen çık butonu
+    private async void OnExitClicked()
+    {
+        if (_leaving) return;
+        _leaving = true;
+
+        if (exitButton != null) exitButton.interactable = false;
+
+        try
+        {
+            // Netcode bağlantısını kapat
+            if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
+                NetworkManager.Singleton.Shutdown();
+
+            // Mümkünse lobby'den çık
+            if (!string.IsNullOrEmpty(currentLobbyId))
+            {
+                await LobbyManager.LeaveLobby(currentLobbyId);
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[LeaderboardUI_Once] Exit failed: {e}");
+        }
+
+        Application.Quit();
+
+        // Editor'de test ederken sadece log görürsün
+        Debug.Log("[LeaderboardUI_Once] Application.Quit çağrıldı.");
     }
 }
