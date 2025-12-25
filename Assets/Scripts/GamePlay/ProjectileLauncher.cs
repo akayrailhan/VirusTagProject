@@ -5,31 +5,36 @@ using UnityEngine.SceneManagement;
 public class ProjectileLauncher : NetworkBehaviour
 {
     [Header("References")]
-    [SerializeField] private InputReader inputReader; // Input okuyucu
-    [SerializeField] private Transform projectileSpawnPoint; // Namlu ucu
-    [SerializeField] private GameObject serverProjectilePrefab; // Hasar veren mermi
-    [SerializeField] private GameObject clientProjectilePrefab; // Görsel mermi
-    [SerializeField] private Collider2D playerCollider; // Kendi collider'ımız (Kendimizi vurmayalım)
+    [SerializeField] private InputReader inputReader;
+    [SerializeField] private Transform projectileSpawnPoint;
+    [SerializeField] private GameObject serverProjectilePrefab;
+    [SerializeField] private GameObject clientProjectilePrefab;
+    [SerializeField] private Collider2D playerCollider;
 
     [Header("Settings")]
     [SerializeField] private float projectileSpeed = 15f;
-    [SerializeField] private float fireRate = 0.5f; // Saniyede 2 mermi
+    [SerializeField] private float fireRate = 0.5f;
 
     [Header("Scene Gate")]
     [SerializeField] private string gameSceneName = "Game";
 
     private bool _shouldFire;
     private float _previousFireTime;
+    private bool _fireUnlocked;
 
-    private bool _fireUnlocked; // Game'e bir kere girince true olur
+    private void Awake()
+    {
+        if (playerCollider == null)
+            playerCollider = GetComponent<Collider2D>();
+    }
 
     public override void OnNetworkSpawn()
     {
         if (!IsOwner) return;
+        if (inputReader == null) return;
 
         inputReader.FireEvent += HandleFire;
 
-        // Eğer zaten Game sahnesinde spawn olduysa kilidi aç
         if (SceneManager.GetActiveScene().name == gameSceneName)
             _fireUnlocked = true;
     }
@@ -37,21 +42,18 @@ public class ProjectileLauncher : NetworkBehaviour
     public override void OnNetworkDespawn()
     {
         if (!IsOwner) return;
-        inputReader.FireEvent -= HandleFire;
+        if (inputReader != null)
+            inputReader.FireEvent -= HandleFire;
     }
 
     private void HandleFire()
     {
-        // İlk ateş denemesinde sahneyi kontrol et
         if (!_fireUnlocked)
         {
             if (SceneManager.GetActiveScene().name == gameSceneName)
-            {
-                _fireUnlocked = true; // bir kere açıldı mı, artık kontrol yok
-            }
+                _fireUnlocked = true;
             else
             {
-                // Game'de değil -> ateş yok
                 _shouldFire = false;
                 return;
             }
@@ -64,19 +66,18 @@ public class ProjectileLauncher : NetworkBehaviour
     {
         if (!IsOwner) return;
 
-        // Kilitliyken ateşlemeyi garanti kapat
         if (!_fireUnlocked)
         {
             _shouldFire = false;
             return;
         }
 
+        if (projectileSpawnPoint == null) return;
+        if (serverProjectilePrefab == null || clientProjectilePrefab == null) return;
+
         if (_shouldFire && Time.time >= _previousFireTime + fireRate)
         {
-            // 1. Client Tarafı (Görsel - Anında Tepki)
             SpawnDummyProjectile(projectileSpawnPoint.position, projectileSpawnPoint.up);
-
-            // 2. Server Tarafı (Mantık - Yetkili)
             PrimaryFireServerRpc(projectileSpawnPoint.position, projectileSpawnPoint.up);
 
             _previousFireTime = Time.time;
@@ -88,41 +89,26 @@ public class ProjectileLauncher : NetworkBehaviour
     [ServerRpc]
     private void PrimaryFireServerRpc(Vector3 spawnPos, Vector3 direction)
     {
-        // Sunucuda gerçek mermiyi yarat
         GameObject projectileInstance = Instantiate(serverProjectilePrefab, spawnPos, Quaternion.identity);
         projectileInstance.transform.up = direction;
 
-        // Hız ver (Unity 6: velocity -> linearVelocity)
         if (projectileInstance.TryGetComponent(out Rigidbody2D rb))
-        {
             rb.linearVelocity = direction * projectileSpeed;
-        }
 
-        // Kendini vurmayı engelle (Collision Ignore)
         if (projectileInstance.TryGetComponent(out Collider2D projectileCollider) && playerCollider != null)
-        {
             Physics2D.IgnoreCollision(playerCollider, projectileCollider);
-        }
 
-        // Mermiyi kimin attığını işaretle
         if (projectileInstance.TryGetComponent(out DealDamage dealDamageScript))
-        {
             dealDamageScript.SetOwner(OwnerClientId);
-        }
 
-        // Mermiyi ağda spawn et
         projectileInstance.GetComponent<NetworkObject>().Spawn();
-
-        // Diğer oyunculara görsel efekti yaratmaları için haber ver
         SpawnDummyProjectileClientRpc(spawnPos, direction);
     }
 
     [ClientRpc]
     private void SpawnDummyProjectileClientRpc(Vector3 spawnPos, Vector3 direction)
     {
-        // Ateş eden kişi zaten yarattı, tekrar yaratmasın
         if (IsOwner) return;
-
         SpawnDummyProjectile(spawnPos, direction);
     }
 
@@ -132,14 +118,9 @@ public class ProjectileLauncher : NetworkBehaviour
         projectileInstance.transform.up = direction;
 
         if (projectileInstance.TryGetComponent(out Rigidbody2D rb))
-        {
             rb.linearVelocity = direction * projectileSpeed;
-        }
 
-        // Görsel merminin de kendimize çarpmasını engelleyelim
         if (projectileInstance.TryGetComponent(out Collider2D projectileCollider) && playerCollider != null)
-        {
             Physics2D.IgnoreCollision(playerCollider, projectileCollider);
-        }
     }
 }

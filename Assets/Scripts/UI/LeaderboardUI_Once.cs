@@ -84,31 +84,37 @@ public class LeaderboardUI_Once : MonoBehaviour
 
         // Leaderboard metni
         // Leaderboard metni (local oyuncuyu sarı + kalın yap)
-ulong localId = (NetworkManager.Singleton != null) ? NetworkManager.Singleton.LocalClientId : ulong.MaxValue;
+        ulong localId = (NetworkManager.Singleton != null) ? NetworkManager.Singleton.LocalClientId : ulong.MaxValue;
 
-StringBuilder sb = new StringBuilder();
-for (int i = 0; i < list.Count; i++)
-{
-    var p = list[i];
-    string line = $"{i + 1}. {p.PlayerName.ToString()} : {p.Score}";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < list.Count; i++)
+        {
+            var p = list[i];
+            string line = $"{i + 1}. {p.PlayerName.ToString()} : {p.Score}";
 
-    if (p.ClientId == localId)
-        sb.AppendLine($"<color=yellow><b>{line}</b></color>");
-    else
-        sb.AppendLine(line);
-}
+            if (p.ClientId == localId)
+                sb.AppendLine($"<color=yellow><b>{line}</b></color>");
+            else
+                sb.AppendLine(line);
+        }
 
 
         if (leaderboardText != null)
             leaderboardText.text = sb.ToString();
 
-        // Kazanan: ilk sıradaki oyuncu
+        // Kazanan: ilk sıradaki oyuncu (eğer sensen sarı + kalın)
         if (winnerText != null)
         {
             if (list.Count > 0)
             {
                 var winner = list[0];
-                winnerText.text = $"Kazanan : {winner.PlayerName.ToString()}";
+                string winnerName = winner.PlayerName.ToString();
+                bool isLocalWinner = (winner.ClientId == localId);
+
+                if (isLocalWinner)
+                    winnerText.text = $"Kazanan : <color=yellow><b>{winnerName}</b></color>";
+                else
+                    winnerText.text = $"Kazanan : {winnerName}";
             }
             else
             {

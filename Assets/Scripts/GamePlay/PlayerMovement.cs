@@ -9,6 +9,18 @@ public class PlayerMovement : NetworkBehaviour
     [SerializeField] private InputReader inputReader;
     [SerializeField] private Rigidbody2D rb;
 
+    [Header("Visual (Animator)")]
+    [SerializeField] private Animator animator;
+    [SerializeField] private SpriteRenderer spriteRenderer;
+
+    [Tooltip("Sağ yürüme animasyonu yoksa, sola yürüme animasyonunu sağa giderken aynalamak için aç.")]
+    [SerializeField] private bool flipSpriteForRight = true;
+
+    [Header("Animator Parameter Names")]
+    [SerializeField] private string moveXParam = "MoveX";
+    [SerializeField] private string moveYParam = "MoveY";
+    [SerializeField] private string speedParam = "Speed";
+
     [Header("Movement")]
     [SerializeField] private float speed = 5f;
 
@@ -16,19 +28,29 @@ public class PlayerMovement : NetworkBehaviour
     [SerializeField] private string gameSceneName = "Game";
 
     [Header("Spawn Occupancy Check")]
-    [SerializeField] private LayerMask playerLayer;     // Player layer'ını seç
-    [SerializeField] private float checkRadius = 0.5f;  // spawn noktası kontrol yarıçapı
+    [SerializeField] private LayerMask playerLayer;
+    [SerializeField] private float checkRadius = 0.5f;
 
     [Header("Slow / Stun")]
-    [SerializeField] private float slowMultiplier = 0.5f; // %50 hız
-    [SerializeField] private float slowDuration = 2f;     // 2 saniye
+    [SerializeField] private float slowMultiplier = 0.5f;
+    [SerializeField] private float slowDuration = 2f;
 
     private float _speedMultiplier = 1f;
     private float _slowEndTime;
     private Vector2 _moveDirection;
     private bool _movementUnlocked;
 
-    // Sabit 4 spawn noktası (senin verdiğin koordinatlar)
+    // Anim yönü için: durunca son baktığı yön
+    private Vector2 _lastLookDir = Vector2.down;
+
+    // Remote oyuncularda rb.linearVelocity güvenilmez olabiliyor -> transform delta fallback
+    private Vector3 _prevWorldPos;
+
+    // Animator param hash
+    private int _moveXHash;
+    private int _moveYHash;
+    private int _speedHash;
+
     private static readonly Vector2[] SpawnPositions =
     {
         new Vector2(10f,  4f),
@@ -37,19 +59,33 @@ public class PlayerMovement : NetworkBehaviour
         new Vector2(-10f, 4f),
     };
 
+    private void Awake()
+    {
+        if (rb == null) rb = GetComponent<Rigidbody2D>();
+        if (animator == null) animator = GetComponent<Animator>();
+        if (spriteRenderer == null) spriteRenderer = GetComponent<SpriteRenderer>();
+
+        _moveXHash = Animator.StringToHash(moveXParam);
+        _moveYHash = Animator.StringToHash(moveYParam);
+        _speedHash = Animator.StringToHash(speedParam);
+
+        _prevWorldPos = transform.position;
+    }
+
     public override void OnNetworkSpawn()
     {
         // Input sadece owner
         if (IsOwner)
         {
-            inputReader.MoveEvent += OnMove;
+            if (inputReader != null)
+                inputReader.MoveEvent += OnMove;
 
             // Eğer zaten Game sahnesinde spawn olduysa kilidi aç
             if (SceneManager.GetActiveScene().name == gameSceneName)
                 _movementUnlocked = true;
         }
 
-        // Spawn kararını server versin (race condition yaşamamak için)
+        // Spawn kararını server versin
         if (IsServer)
         {
             Vector2 pos = PickRandomFreeSpawn();
@@ -60,7 +96,8 @@ public class PlayerMovement : NetworkBehaviour
     public override void OnNetworkDespawn()
     {
         if (!IsOwner) return;
-        inputReader.MoveEvent -= OnMove;
+        if (inputReader != null)
+            inputReader.MoveEvent -= OnMove;
     }
 
     private void OnMove(Vector2 direction)
@@ -70,7 +107,7 @@ public class PlayerMovement : NetworkBehaviour
         {
             if (SceneManager.GetActiveScene().name == gameSceneName)
             {
-                _movementUnlocked = true; // bir kere açıldı mı, artık kontrol yok
+                _movementUnlocked = true;
             }
             else
             {
@@ -79,16 +116,26 @@ public class PlayerMovement : NetworkBehaviour
             }
         }
 
+        // inputReader genelde normalize eder ama garanti olsun:
+        if (direction.sqrMagnitude > 1f) direction.Normalize();
         _moveDirection = direction;
+    }
+
+    private void Update()
+    {
+        // Animasyon/flip herkesde çalışsın (owner+remote)
+        Vector2 visualVel = GetVisualVelocity();
+        UpdateAnimatorAndFlip(visualVel);
     }
 
     private void FixedUpdate()
     {
+        // Hareketi sadece owner kontrol eder
         if (!IsOwner) return;
 
         if (!_movementUnlocked)
         {
-            rb.linearVelocity = Vector2.zero;
+            if (rb != null) rb.linearVelocity = Vector2.zero;
             return;
         }
 
@@ -99,13 +146,61 @@ public class PlayerMovement : NetworkBehaviour
         }
 
         float finalSpeed = speed * _speedMultiplier;
-        rb.linearVelocity = _moveDirection * finalSpeed;
+
+        if (rb != null)
+            rb.linearVelocity = _moveDirection * finalSpeed;
+    }
+
+    private Vector2 GetVisualVelocity()
+    {
+        // 1) Rigidbody'den oku
+        if (rb != null)
+        {
+            Vector2 v = rb.linearVelocity;
+            // bazen remote'da 0 döner, o yüzden fallback da var
+            if (v.sqrMagnitude > 0.0001f)
+            {
+                _prevWorldPos = transform.position;
+                return v;
+            }
+        }
+
+        // 2) Transform delta fallback
+        Vector3 pos = transform.position;
+        float dt = Mathf.Max(Time.deltaTime, 0.0001f);
+        Vector2 vel = (Vector2)((pos - _prevWorldPos) / dt);
+        _prevWorldPos = pos;
+        return vel;
+    }
+
+    private void UpdateAnimatorAndFlip(Vector2 velocity)
+    {
+        if (animator == null) return;
+
+        bool isMoving = velocity.sqrMagnitude > 0.001f;
+
+        if (isMoving)
+            _lastLookDir = velocity.normalized;
+
+        // Durunca son baktığı yön
+        Vector2 dirForAnim = isMoving ? velocity.normalized : _lastLookDir;
+
+        animator.SetFloat(_moveXHash, dirForAnim.x);
+        animator.SetFloat(_moveYHash, dirForAnim.y);
+        animator.SetFloat(_speedHash, isMoving ? 1f : 0f);
+
+        // Sağ anim yoksa: sağa giderken aynala
+        if (spriteRenderer != null && flipSpriteForRight)
+        {
+            if (dirForAnim.x > 0.01f) spriteRenderer.flipX = true;       // sağ
+            else if (dirForAnim.x < -0.01f) spriteRenderer.flipX = false; // sol
+            // x ~ 0 iken flip'i değiştirme (yukarı/aşağı)
+        }
     }
 
     [ClientRpc]
     public void ApplySlowClientRpc(float multiplier, float duration)
     {
-        // Hareketi sadece owner kontrol ettiği için owner'ı yavaşlatmamız yeterli
         if (!IsOwner) return;
 
         _speedMultiplier = multiplier;
@@ -117,7 +212,6 @@ public class PlayerMovement : NetworkBehaviour
     {
         int n = SpawnPositions.Length;
 
-        // 0..n-1 karıştır
         List<int> idxs = new List<int>(n);
         for (int i = 0; i < n; i++) idxs.Add(i);
 
@@ -127,7 +221,6 @@ public class PlayerMovement : NetworkBehaviour
             (idxs[i], idxs[j]) = (idxs[j], idxs[i]);
         }
 
-        // Sırayla boş arıyoruz
         foreach (int idx in idxs)
         {
             Vector2 p = SpawnPositions[idx];
@@ -136,7 +229,6 @@ public class PlayerMovement : NetworkBehaviour
                 return p;
         }
 
-        // Hepsi doluysa: rastgele fallback
         return SpawnPositions[Random.Range(0, n)];
     }
 
@@ -153,7 +245,6 @@ public class PlayerMovement : NetworkBehaviour
             transform.position = pos;
         }
 
-        // NetworkTransform yoksa gerekli; varsa bile sorun çıkarmaz
         TeleportClientRpc(pos);
     }
 

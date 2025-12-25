@@ -1,5 +1,6 @@
 using TMPro;
 using UnityEngine;
+using Unity.Netcode;
 
 public class PlayerNameTag : MonoBehaviour
 {
@@ -27,7 +28,21 @@ public class PlayerNameTag : MonoBehaviour
         if (playerState == null || text == null) return;
 
         var data = playerState.CurrentState.Value;
-        text.text = data.PlayerName.ToString();
+        string name = data.PlayerName.ToString();
+
+        bool isLocal =
+            NetworkManager.Singleton != null &&
+            NetworkManager.Singleton.LocalClientId == data.ClientId;
+
+        if (isLocal)
+        {
+            // Skorboard ile aynı stil: sarı + kalın
+            text.text = $"<color=yellow><b>{name}</b></color>";
+        }
+        else
+        {
+            text.text = name;
+        }
     }
 
     private void OnEnable()

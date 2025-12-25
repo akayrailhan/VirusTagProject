@@ -2251,6 +2251,7 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   playersToStart: 2
   gameSceneName: Game
+  lobbyMenuSceneName: LobbyMenu
   scoreTickInterval: 1
   scorePerTick: 1
 --- !u!1 &1326346310
@@ -3087,7 +3088,7 @@ MonoBehaviour:
   NetworkConfig:
     ProtocolVersion: 0
     NetworkTransport: {fileID: 1551361246}
-    PlayerPrefab: {fileID: 3913954045652059360, guid: 27be2b0b9e9ba4047a6f7abd623c4581, type: 3}
+    PlayerPrefab: {fileID: 3642292882823948024, guid: dc4d825a84b16f741bd6ca91e18e3fc9, type: 3}
     Prefabs:
       NetworkPrefabsLists:
       - {fileID: 11400000, guid: 710928b3298d3d84bbf3f2df273ef1c6, type: 2}
