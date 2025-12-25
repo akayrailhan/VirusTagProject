@@ -83,12 +83,21 @@ public class LeaderboardUI_Once : MonoBehaviour
         list.Sort((a, b) => b.Score.CompareTo(a.Score));
 
         // Leaderboard metni
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < list.Count; i++)
-        {
-            var p = list[i];
-            sb.AppendLine($"{i + 1}. {p.PlayerName.ToString()} : {p.Score}");
-        }
+        // Leaderboard metni (local oyuncuyu sarı + kalın yap)
+ulong localId = (NetworkManager.Singleton != null) ? NetworkManager.Singleton.LocalClientId : ulong.MaxValue;
+
+StringBuilder sb = new StringBuilder();
+for (int i = 0; i < list.Count; i++)
+{
+    var p = list[i];
+    string line = $"{i + 1}. {p.PlayerName.ToString()} : {p.Score}";
+
+    if (p.ClientId == localId)
+        sb.AppendLine($"<color=yellow><b>{line}</b></color>");
+    else
+        sb.AppendLine(line);
+}
+
 
         if (leaderboardText != null)
             leaderboardText.text = sb.ToString();

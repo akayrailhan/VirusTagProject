@@ -11,9 +11,12 @@ public class InfectionManager : NetworkBehaviour
     [SerializeField] private int playersToStart = 4;
     [SerializeField] private string gameSceneName = "Game";
 
+    [Header("Scenes")]
+    [SerializeField] private string lobbyMenuSceneName = "LobbyMenu";
+
     [Header("Scoring")]
-    [SerializeField] private float scoreTickInterval = 1f; // kaç saniyede bir puan
-    [SerializeField] private int scorePerTick = 1;         // her tikte kaç puan
+    [SerializeField] private float scoreTickInterval = 1f;
+    [SerializeField] private int scorePerTick = 1;
 
     private float _nextScoreTime;
 
@@ -35,6 +38,12 @@ public class InfectionManager : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        // Host/client fark etmez: disconnect yakalayalım
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnect;
+        }
+
         if (!IsServer) return;
 
         if (NetworkManager.Singleton != null && NetworkManager.Singleton.SceneManager != null)
@@ -45,6 +54,11 @@ public class InfectionManager : NetworkBehaviour
 
     public override void OnNetworkDespawn()
     {
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnect;
+        }
+
         if (!IsServer) return;
 
         if (NetworkManager.Singleton != null && NetworkManager.Singleton.SceneManager != null)
@@ -53,9 +67,31 @@ public class InfectionManager : NetworkBehaviour
         }
     }
 
-    // İstersen PlayerState.OnNetworkSpawn içinde çağır (server tarafında).
-    // Ama senin akışta çoğu zaman PlayerObject Lobby'de spawn olduğu için Game'de tekrar OnNetworkSpawn tetiklenmeyebilir.
-    // O yüzden asıl toplama işi OnLoadEventCompleted içinde.
+    // HOST çıkınca client'lar disconnect olur -> lobby'e dön
+    private void OnClientDisconnect(ulong clientId)
+    {
+        // Biz disconnect olduysak (local client), menüye dön
+        if (NetworkManager.Singleton == null) return;
+
+        if (clientId == NetworkManager.Singleton.LocalClientId)
+        {
+            // Network kapanmış olabilir, o yüzden sadece normal SceneManager ile yükle
+            SceneManager.LoadScene(lobbyMenuSceneName, LoadSceneMode.Single);
+        }
+    }
+
+    // Host'un "çık" butonuna bağlayabileceğin fonksiyon:
+    // (Host çıkınca zaten herkes düşer; host da lobby'e döner)
+    public void HostLeaveToLobby()
+    {
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.Shutdown();
+        }
+
+        SceneManager.LoadScene(lobbyMenuSceneName, LoadSceneMode.Single);
+    }
+
     public void RegisterPlayer(PlayerState ps)
     {
         if (!IsServer) return;
@@ -76,12 +112,10 @@ public class InfectionManager : NetworkBehaviour
         _startRequested = true;
         _matchStarted = false;
 
-        // Lobby'de basıldığı an listemiz boştur / eski olabilir; temiz başla
         _players.Clear();
 
         Debug.Log("[InfectionManager] Start requested. Waiting Game scene load + player collection...");
 
-        // Eğer zaten Game sahnesindeysek (edge case) hemen toplayıp deneyelim
         if (SceneManager.GetActiveScene().name == gameSceneName)
         {
             CollectPlayersFromConnectedClients();
@@ -125,25 +159,25 @@ public class InfectionManager : NetworkBehaviour
 
     private void Update()
     {
-        if (!IsServer) return;      // sadece server puan versin
-        if (!_matchStarted) return; // maç başlamadıysa puan yok
+        if (!IsServer) return;
+        if (!_matchStarted) return;
 
         if (Time.time < _nextScoreTime) return;
         _nextScoreTime = Time.time + scoreTickInterval;
 
-        // Her tikte: temiz olanların skorunu arttır
         foreach (var p in _players)
         {
             if (p == null) continue;
 
             var data = p.CurrentState.Value;
-            if (!data.IsInfected)   // temiz ise
+            if (!data.IsInfected)
             {
                 data.Score += scorePerTick;
-                p.CurrentState.Value = data; // NetworkVariable güncelle
+                p.CurrentState.Value = data;
             }
         }
     }
+
     private void TryStartMatch()
     {
         if (!IsServer) return;
@@ -151,11 +185,9 @@ public class InfectionManager : NetworkBehaviour
         if (_matchStarted) return;
         if (_players.Count < playersToStart) return;
 
-        // önce herkes clean
         foreach (var p in _players)
             p.SetInfectionStatus(false);
 
-        // sonra random 1 kişiyi infected yap
         int index = Random.Range(0, _players.Count);
         _players[index].SetInfectionStatus(true);
 

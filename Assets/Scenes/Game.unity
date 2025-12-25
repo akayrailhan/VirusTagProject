@@ -352,7 +352,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   leaderboardText: {fileID: 1784504541}
   refreshInterval: 0.5
-  gameDuration: 120
+  gameDuration: 20
   gameOverSceneName: GameOver
   winScore: 100
   cleanupGameplayNetworkObjects: 1
