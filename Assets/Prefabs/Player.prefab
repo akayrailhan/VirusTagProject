@@ -385,7 +385,7 @@ MonoBehaviour:
   gameSceneName: Game
   playerLayer:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 8
   checkRadius: 0.5
   slowMultiplier: 0.5
   slowDuration: 2
@@ -439,7 +439,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ShowTopMostFoldoutHeaderGroup: 1
   bodyRenderer: {fileID: 3509787496765013473}
-  cleanColor: {r: 0, g: 0, b: 1, a: 1}
   infectedColor: {r: 1, g: 0, b: 0, a: 1}
 --- !u!1 &6979447773182110587
 GameObject:

@@ -53,10 +53,10 @@ public class PlayerMovement : NetworkBehaviour
 
     private static readonly Vector2[] SpawnPositions =
     {
-        new Vector2(10f,  4f),
-        new Vector2(10f, -4f),
-        new Vector2(-10f,-4f),
-        new Vector2(-10f, 4f),
+        new Vector2(7f,  4f),
+        new Vector2(7f, -4f),
+        new Vector2(-7f,-4f),
+        new Vector2(-7f, 4f),
     };
 
     private void Awake()

@@ -12,10 +12,17 @@ public class DealDamage : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D other)
     {
-        // 1. Sadece sunucuda çalışır
+        // 1) Duvara çarptıysa her tarafta yok olsun
+        if (other.CompareTag("Wall"))
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        // 2) Oyuncuya hasar/etki sadece sunucuda çalışsın
         if (!NetworkManager.Singleton.IsServer) return;
 
-        // 2. Mermi bir oyuncuya çarptı mı?
+        // 3) Mermi bir oyuncuya çarptı mı?
         if (other.TryGetComponent(out NetworkObject hitNetworkObject))
         {
             // Kendini vurmayı engelle
@@ -62,10 +69,6 @@ public class DealDamage : MonoBehaviour
             // --- VİRÜS MANTIĞI BİTİŞİ ---
 
             // Mermiyi yok et
-            Destroy(gameObject);
-        }
-        else if (other.CompareTag("Wall"))
-        {
             Destroy(gameObject);
         }
     }
