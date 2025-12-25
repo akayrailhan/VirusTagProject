@@ -339,6 +339,64 @@ public static class LobbyManager
         return result;
     }
 
+        // Lobby'den çık (client) / lobby'yi kapat (host)
+    public static async Task<bool> LeaveLobby(string lobbyId = null)
+    {
+        try
+        {
+            // lobbyId verilmezse mevcut lobby id'yi kullan
+            if (string.IsNullOrEmpty(lobbyId))
+                lobbyId = CurrentLobbyId;
+
+            if (string.IsNullOrEmpty(lobbyId))
+            {
+                Debug.LogWarning("[Lobby] LeaveLobby: lobbyId is null/empty.");
+                return false;
+            }
+
+            string playerId = AuthenticationService.Instance.IsSignedIn
+                ? AuthenticationService.Instance.PlayerId
+                : null;
+
+            if (string.IsNullOrEmpty(playerId))
+            {
+                Debug.LogWarning("[Lobby] LeaveLobby: not authenticated (playerId empty).");
+                return false;
+            }
+
+            if (IsHostLocal)
+            {
+                // Host: lobiyi kapat
+                Debug.Log($"[Lobby] Host closing lobby {lobbyId}...");
+
+                // Heartbeat durdur (varsa)
+                LobbyHeartbeatHandler.SetLobbyId(null);
+
+                await LobbyService.Instance.DeleteLobbyAsync(lobbyId);
+                Debug.Log("[Lobby] Lobby closed (deleted) by host.");
+            }
+            else
+            {
+                // Client: lobiden çık
+                Debug.Log($"[Lobby] Client leaving lobby {lobbyId}... playerId={playerId}");
+                await LobbyService.Instance.RemovePlayerAsync(lobbyId, playerId);
+                Debug.Log("[Lobby] Left lobby (removed player).");
+            }
+
+            // Local state reset
+            CurrentLobbyId = null;
+            IsHostLocal = false;
+
+            return true;
+        }
+        catch (LobbyServiceException e)
+        {
+            Debug.LogError($"[Lobby] LeaveLobby failed: {e.Message}");
+            return false;
+        }
+    }
+
+
 }
 
 // Lobiyi canlı tutmak için Heartbeat (Kalp Atışı) sistemi
