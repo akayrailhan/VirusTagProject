@@ -179,20 +179,23 @@ public class InfectionManager : NetworkBehaviour
     }
 
     private void TryStartMatch()
-    {
-        if (!IsServer) return;
-        if (!_startRequested) return;
-        if (_matchStarted) return;
-        if (_players.Count < playersToStart) return;
+{
+    if (!IsServer) return;
+    if (!_startRequested) return;
+    if (_matchStarted) return;
 
-        foreach (var p in _players)
-            p.SetInfectionStatus(false);
+    // Oyuncu limiti yok: sadece en az 1 oyuncu varsa başlat
+    if (_players.Count < 1) return;
 
-        int index = Random.Range(0, _players.Count);
-        _players[index].SetInfectionStatus(true);
+    foreach (var p in _players)
+        p.SetInfectionStatus(false);
 
-        _matchStarted = true;
+    int index = Random.Range(0, _players.Count);
+    _players[index].SetInfectionStatus(true);
 
-        Debug.Log($"[InfectionManager] Match started. Infected OwnerClientId={_players[index].OwnerClientId}");
-    }
+    _matchStarted = true;
+
+    Debug.Log($"[InfectionManager] Match started. Infected OwnerClientId={_players[index].OwnerClientId}");
+}
+
 }

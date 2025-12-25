@@ -75,7 +75,12 @@ public class LeaderboardUI : MonoBehaviour
         for (int i = 0; i < list.Count; i++)
         {
             var p = list[i];
-            string line = $"{i + 1}. {p.PlayerName.ToString()} : {p.Score}";
+            string name = p.PlayerName.ToString();
+if (name.Length > 8)
+    name = name.Substring(0, 8) + "...";
+
+string line = $"{i + 1}. {name} : {p.Score}";
+
 
             // Eğer bu satırdaki oyuncu BEN isem (Local Client)
             if (p.ClientId == NetworkManager.Singleton.LocalClientId)

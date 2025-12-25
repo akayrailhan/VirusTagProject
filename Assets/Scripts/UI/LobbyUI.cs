@@ -20,6 +20,7 @@ public class LobbyUI : MonoBehaviour
     public Button createLobbyButton;
     public Button refreshButton;
     public Button readyButton;
+    public Button leaveButton;
     public Image lobbyDetailsPanel;
     public TextMeshProUGUI lobbyName;
     public TextMeshProUGUI playerCount;
@@ -36,6 +37,7 @@ public class LobbyUI : MonoBehaviour
         createLobbyButton.onClick.AddListener(OnCreateClicked);
         refreshButton.onClick.AddListener(RefreshLobbyList);
         startGameButton.onClick.AddListener(OnStartGameClicked);
+        leaveButton.onClick.AddListener(OnLeaveLobbyClicked);
         if (readyButton != null) readyButton.onClick.AddListener(OnReadyClicked);
     }
 
@@ -353,6 +355,57 @@ public class LobbyUI : MonoBehaviour
 
         return infos;
     }
+
+    public async void OnLeaveLobbyClicked()
+{
+    // Zaten lobide değilsek: UI'yi temizle + listeyi yenile
+    if (string.IsNullOrEmpty(LobbyManager.CurrentLobbyId))
+    {
+        Debug.LogWarning("[LobbyUI] Leave pressed but not in a lobby.");
+        ClearLobbyDetails();
+        RefreshLobbyList();
+        return;
+    }
+
+    // Polling'i anında durdur (PollLobbyUpdates zaten _isInLobby + CurrentLobbyId ile dönüyor)
+    _isInLobby = false;
+    StopAllCoroutines();
+
+    try
+    {
+        bool ok = await LobbyManager.LeaveLobby();
+        if (!ok)
+        {
+            Debug.LogWarning("[LobbyUI] LobbyManager.LeaveLobby returned false.");
+        }
+    }
+    catch (System.Exception e)
+    {
+        Debug.LogError($"[LobbyUI] Leave lobby exception: {e}");
+    }
+
+    // Netcode tarafını da kapat (host/client fark etmez)
+    if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
+    {
+        NetworkManager.Singleton.Shutdown();
+    }
+
+    // Local ready state reset + buton yazısı reset
+    _localReady = false;
+    if (readyButton != null)
+    {
+        var txt = readyButton.GetComponentInChildren<TextMeshProUGUI>();
+        if (txt != null) txt.text = "Ready";
+    }
+
+    // UI temizle + açık lobby listesini tekrar çek
+    ClearLobbyDetails();
+    RefreshLobbyList();
+
+    // Create butonu disable kaldıysa geri aç (güvenli)
+    if (createLobbyButton != null) createLobbyButton.interactable = true;
+}
+
 
     private System.Collections.IEnumerator PollLobbyUpdates()
     {
