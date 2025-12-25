@@ -6,8 +6,10 @@ using UnityEngine;
 public class ClientNetworkTransform : NetworkTransform
 {
     // Yetki kontrolünü eziyoruz: Sunucu yetkili DEĞİL, Client yetkili olsun.
-    protected override bool OnIsServerAuthoritative()
-    {
-        return false;
-    }
+    // Yetki kontrolü: SERVER yetkili olsun (duvar çarpışması server fiziğiyle garanti)
+protected override bool OnIsServerAuthoritative()
+{
+    return true;
+}
+
 }

@@ -35,15 +35,23 @@ public class PlayerMovement : NetworkBehaviour
     [SerializeField] private float slowMultiplier = 0.5f;
     [SerializeField] private float slowDuration = 2f;
 
-    private float _speedMultiplier = 1f;
-    private float _slowEndTime;
+    // Owner tarafı: input + anim için
     private Vector2 _moveDirection;
     private bool _movementUnlocked;
+
+    // Server tarafı: gerçek fizik hareketi burada
+    private Vector2 _serverMoveDirection;
+    private float _serverSpeedMultiplier = 1f;
+    private float _serverSlowEndTime;
+
+    // Owner tarafı (görsel/prediction için slow)
+    private float _speedMultiplier = 1f;
+    private float _slowEndTime;
 
     // Anim yönü için: durunca son baktığı yön
     private Vector2 _lastLookDir = Vector2.down;
 
-    // Remote oyuncularda rb.linearVelocity güvenilmez olabiliyor -> transform delta fallback
+    // Remote oyuncularda rb.velocity güvenilmez olabiliyor -> transform delta fallback
     private Vector3 _prevWorldPos;
 
     // Animator param hash
@@ -74,15 +82,22 @@ public class PlayerMovement : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        // Hem server hem client tarafında sahne adı uygunsa kilidi aç
+        if (SceneManager.GetActiveScene().name == gameSceneName)
+            _movementUnlocked = true;
+
         // Input sadece owner
         if (IsOwner)
         {
             if (inputReader != null)
                 inputReader.MoveEvent += OnMove;
+        }
 
-            // Eğer zaten Game sahnesinde spawn olduysa kilidi aç
-            if (SceneManager.GetActiveScene().name == gameSceneName)
-                _movementUnlocked = true;
+        // Server-authoritative: client tarafında fizik simülasyonunu kapat
+        if (!IsServer && rb != null)
+        {
+            rb.linearVelocity = Vector2.zero;
+            rb.simulated = false;
         }
 
         // Spawn kararını server versin
@@ -95,30 +110,37 @@ public class PlayerMovement : NetworkBehaviour
 
     public override void OnNetworkDespawn()
     {
-        if (!IsOwner) return;
-        if (inputReader != null)
+        if (IsOwner && inputReader != null)
             inputReader.MoveEvent -= OnMove;
     }
 
     private void OnMove(Vector2 direction)
     {
-        // İlk kez hareket denemesinde sahneyi kontrol et
+        // Scene gate
         if (!_movementUnlocked)
         {
             if (SceneManager.GetActiveScene().name == gameSceneName)
-            {
                 _movementUnlocked = true;
-            }
             else
             {
                 _moveDirection = Vector2.zero;
+                SubmitMoveServerRpc(Vector2.zero);
                 return;
             }
         }
 
-        // inputReader genelde normalize eder ama garanti olsun:
         if (direction.sqrMagnitude > 1f) direction.Normalize();
         _moveDirection = direction;
+
+        // input'u server'a yolla (gerçek hareket server'da)
+        SubmitMoveServerRpc(_moveDirection);
+    }
+
+    [ServerRpc]
+    private void SubmitMoveServerRpc(Vector2 direction)
+    {
+        if (direction.sqrMagnitude > 1f) direction.Normalize();
+        _serverMoveDirection = direction;
     }
 
     private void Update()
@@ -130,34 +152,37 @@ public class PlayerMovement : NetworkBehaviour
 
     private void FixedUpdate()
     {
-        // Hareketi sadece owner kontrol eder
-        if (!IsOwner) return;
+        // Gerçek hareket SADECE server'da
+        if (!IsServer) return;
 
+        // Server tarafında da sahne kilidini kontrol et
         if (!_movementUnlocked)
         {
-            if (rb != null) rb.linearVelocity = Vector2.zero;
-            return;
+            if (SceneManager.GetActiveScene().name == gameSceneName)
+                _movementUnlocked = true;
+            else
+            {
+                if (rb != null) rb.linearVelocity = Vector2.zero;
+                return;
+            }
         }
 
-        // Yavaşlama süresi bittiyse hızı normale çek
-        if (_speedMultiplier < 1f && Time.time >= _slowEndTime)
-        {
-            _speedMultiplier = 1f;
-        }
+        // slow süresi bittiyse normale dön
+        if (_serverSpeedMultiplier < 1f && Time.time >= _serverSlowEndTime)
+            _serverSpeedMultiplier = 1f;
 
-        float finalSpeed = speed * _speedMultiplier;
+        float finalSpeed = speed * _serverSpeedMultiplier;
 
         if (rb != null)
-            rb.linearVelocity = _moveDirection * finalSpeed;
+            rb.linearVelocity = _serverMoveDirection * finalSpeed;
     }
 
     private Vector2 GetVisualVelocity()
     {
-        // 1) Rigidbody'den oku
-        if (rb != null)
+        // 1) Rigidbody'den oku (simulated ise)
+        if (rb != null && rb.simulated)
         {
             Vector2 v = rb.linearVelocity;
-            // bazen remote'da 0 döner, o yüzden fallback da var
             if (v.sqrMagnitude > 0.0001f)
             {
                 _prevWorldPos = transform.position;
@@ -165,7 +190,7 @@ public class PlayerMovement : NetworkBehaviour
             }
         }
 
-        // 2) Transform delta fallback
+        // 2) Transform delta fallback (client'ta rb.simulated kapalı olabiliyor)
         Vector3 pos = transform.position;
         float dt = Mathf.Max(Time.deltaTime, 0.0001f);
         Vector2 vel = (Vector2)((pos - _prevWorldPos) / dt);
@@ -189,17 +214,27 @@ public class PlayerMovement : NetworkBehaviour
         animator.SetFloat(_moveYHash, dirForAnim.y);
         animator.SetFloat(_speedHash, isMoving ? 1f : 0f);
 
-        // Sağ anim yoksa: sağa giderken aynala
         if (spriteRenderer != null && flipSpriteForRight)
         {
-            if (dirForAnim.x > 0.01f) spriteRenderer.flipX = true;       // sağ
-            else if (dirForAnim.x < -0.01f) spriteRenderer.flipX = false; // sol
-            // x ~ 0 iken flip'i değiştirme (yukarı/aşağı)
+            if (dirForAnim.x > 0.01f) spriteRenderer.flipX = true;
+            else if (dirForAnim.x < -0.01f) spriteRenderer.flipX = false;
         }
     }
 
+    // Dışarıdan (DealDamage vs) ÇAĞIRACAĞIN fonksiyon bu:
+    // Server'da slow uygular + owner'a görsel/prediction için haber verir
+    public void ApplySlowOnServer(float multiplier, float duration)
+    {
+        if (!IsServer) return;
+
+        _serverSpeedMultiplier = multiplier;
+        _serverSlowEndTime = Time.time + duration;
+
+        ApplySlowClientRpc(multiplier, duration);
+    }
+
     [ClientRpc]
-    public void ApplySlowClientRpc(float multiplier, float duration)
+    private void ApplySlowClientRpc(float multiplier, float duration)
     {
         if (!IsOwner) return;
 
@@ -240,10 +275,9 @@ public class PlayerMovement : NetworkBehaviour
             rb.linearVelocity = Vector2.zero;
             rb.position = pos;
         }
-        else
-        {
-            transform.position = pos;
-        }
+
+        // NetworkTransform bunu da sync'leyecek ama garanti olsun:
+        transform.position = pos;
 
         TeleportClientRpc(pos);
     }
@@ -251,15 +285,13 @@ public class PlayerMovement : NetworkBehaviour
     [ClientRpc]
     private void TeleportClientRpc(Vector2 pos)
     {
+        // Client'ta rb.simulated kapalı olsa bile transform güncelle
         if (rb != null)
         {
             rb.linearVelocity = Vector2.zero;
             rb.position = pos;
         }
-        else
-        {
-            transform.position = pos;
-        }
+        transform.position = pos;
     }
 
 #if UNITY_EDITOR

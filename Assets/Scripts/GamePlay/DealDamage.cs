@@ -33,7 +33,8 @@ public class DealDamage : MonoBehaviour
             // --- VİRÜS MANTIĞI BAŞLANGICI ---
 
             // A) Vuran Oyuncuyu Bul (Merminin Sahibi)
-            if (NetworkManager.Singleton.ConnectedClients.TryGetValue(_ownerClientId, out NetworkClient shooterClient))
+            if (NetworkManager.Singleton.ConnectedClients.TryGetValue(_ownerClientId, out NetworkClient shooterClient)
+                && shooterClient.PlayerObject != null)
             {
                 var shooterState = shooterClient.PlayerObject.GetComponent<PlayerState>();
                 bool shooterInfected = shooterState.CurrentState.Value.IsInfected;
@@ -58,8 +59,8 @@ public class DealDamage : MonoBehaviour
                     {
                         if (hitNetworkObject.TryGetComponent(out PlayerMovement hitMovement))
                         {
-                            // 0.5f = %50 hız, 2f = 2 saniye
-                            hitMovement.ApplySlowClientRpc(0.5f, 2f);
+                            // Slow'u server uygular (PlayerMovement içinde ClientRpc tetiklenir)
+                            hitMovement.ApplySlowOnServer(0.5f, 2f);
                             Debug.Log("INFECTED PLAYER SLOWED!");
                         }
                     }
